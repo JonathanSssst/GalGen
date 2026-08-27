@@ -1,0 +1,326 @@
+/* GalGen 游戏端样式。 */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; background: #1a1d24; }
+
+#stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  color: #fff;
+  font-family: "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  user-select: none;
+  cursor: default;
+}
+
+#bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#standee {
+  position: absolute;
+  bottom: 200px;
+  left: 50%;
+  transform: translateX(-58%);
+  height: 62%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 26px rgba(0, 0, 0, 0.55));
+  pointer-events: none;
+}
+
+/* ---------- 顶栏 ---------- */
+#topbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: linear-gradient(rgba(0, 0, 0, 0.55), transparent);
+}
+#project-name { font-weight: 600; text-shadow: 0 1px 3px #000; font-size: 14px; }
+.controls { display: flex; gap: 8px; align-items: center; }
+.ctrl {
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ctrl:hover { background: rgba(0, 0, 0, 0.72); }
+.ctrl.on { background: #1e90ff; border-color: #1e90ff; }
+#sel-speed {
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+#sel-speed option { color: #222; background: #fff; }
+
+/* ---------- 对话框 ---------- */
+#dialog-box {
+  position: absolute;
+  left: 3%;
+  right: 3%;
+  bottom: 3%;
+  min-height: 150px;
+  background: rgba(10, 12, 18, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 16px 22px 28px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+#name-label {
+  display: inline-block;
+  background: #1e90ff;
+  color: #fff;
+  border-radius: 6px;
+  padding: 2px 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+#dialog-text {
+  min-height: 54px;
+  line-height: 1.75;
+  font-size: 22px;
+  white-space: pre-wrap;
+}
+#advance-hint {
+  position: absolute;
+  right: 20px;
+  bottom: 10px;
+  color: #8a93a5;
+  font-size: 16px;
+  animation: blink 1s steps(2, start) infinite;
+}
+@keyframes blink { 50% { opacity: 0.2; } }
+
+/* ---------- 选项 ---------- */
+#options {
+  position: absolute;
+  left: 50%;
+  bottom: 26%;
+  transform: translateX(-50%);
+  width: min(560px, 82vw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 5;
+}
+.option {
+  background: rgba(12, 14, 20, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  padding: 14px 18px;
+  font-size: 18px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+/* 选中统一由 .hl 表示（鼠标悬浮会同步为键盘选中，见 game.js） */
+.option.hl {
+  background: rgba(30, 144, 255, 0.28);
+  border-color: #1e90ff;
+  transform: translateY(-1px);
+}
+
+/* ---------- 遮罩 / 弹层 ---------- */
+#overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.78);
+  z-index: 20;
+}
+#overlay.hidden { display: none; }
+#overlay-card {
+  background: rgba(16, 18, 26, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  padding: 36px 48px;
+  text-align: center;
+  max-width: 600px;
+  max-height: 84vh;
+  overflow: auto;
+}
+#overlay-card h1 { font-size: 26px; margin-bottom: 12px; }
+#overlay-card .desc { color: #b6bcc9; line-height: 1.8; margin-bottom: 24px; white-space: pre-wrap; }
+#overlay-card img { max-width: 100%; border-radius: 10px; margin-bottom: 18px; }
+.primary-btn {
+  background: #1e90ff;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 36px;
+  font-size: 16px;
+  cursor: pointer;
+}
+.primary-btn:hover { background: #0f7de0; }
+
+/* ---------- 提示 ---------- */
+#toast {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30, 144, 255, 0.92);
+  color: #fff;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  z-index: 30;
+}
+#toast.show { opacity: 1; }
+
+/* ---------- 菜单 ---------- */
+.menu-list { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; min-width: 220px; }
+.menu-btn {
+  background: rgba(255, 255, 255, 0.06);
+  color: #dfe6f0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 12px 20px;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.menu-btn:hover { background: rgba(30, 144, 255, 0.2); border-color: #1e90ff; }
+.menu-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.menu-btn.primary-btn { border: none; }
+
+/* ---------- 存档槽位 ---------- */
+.slot-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin: 14px 0; }
+.save-slot {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.save-slot:hover { border-color: #1e90ff; transform: translateY(-1px); }
+.save-slot img { width: 100%; height: 120px; object-fit: cover; display: block; background: #14171e; }
+.slot-empty {
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  font-size: 14px;
+  background: #14171e;
+}
+.slot-info { padding: 8px 12px; }
+.slot-info b { display: block; font-size: 13px; color: #dfe6f0; }
+.slot-info span { font-size: 11px; color: #8a93a5; }
+
+/* ---------- 画廊 ---------- */
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 14px 0;
+  max-width: 640px;
+}
+.cg-card {
+  background: #14171e;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cg-card:hover { border-color: #1e90ff; }
+.cg-card img { width: 100%; height: 140px; object-fit: cover; display: block; }
+.cg-card.locked {
+  height: 172px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: default;
+}
+.cg-lock { font-size: 30px; opacity: 0.5; }
+.cg-label { display: block; padding: 6px 8px; font-size: 12px; color: #8a93a5; text-align: center; }
+.cg-view img { max-width: min(760px, 88vw); max-height: 70vh; border-radius: 10px; }
+
+/* ---------- 音乐室 / 回想列表 ---------- */
+.music-list { list-style: none; margin: 14px 0; min-width: 320px; }
+.music-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.music-item.locked { opacity: 0.5; }
+.music-name { font-size: 14px; }
+.recall-list { list-style: none; margin-top: 12px; max-height: 46vh; overflow: auto; min-width: 420px; }
+.recall-dialog { padding: 8px 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+.recall-dialog.unread { opacity: 0.4; }
+.recall-head { color: #1e90ff; font-size: 12px; display: block; margin-bottom: 2px; }
+.recall-body { font-size: 14px; color: #dfe6f0; }
+
+/* ---------- 设置 ---------- */
+.settings-list { margin: 14px 0; min-width: 360px; }
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 14px;
+}
+.set-row select, .set-row input[type="number"] {
+  background: #1c2028;
+  color: #dfe6f0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+.set-row input[type="range"] { flex: 1; max-width: 220px; }
+.set-row .vol { font-style: normal; width: 44px; text-align: right; color: #8a93a5; font-size: 12px; }
+.ctrl.danger:hover { border-color: #ff4757; color: #ff4757; }
+
+/* ---------- 结局统计 ---------- */
+.endings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin: 14px 0;
+  min-width: 340px;
+}
+.ending-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ending-card b { color: #dfe6f0; }
+.ending-card span { color: #8a93a5; font-size: 12px; }
+.ending-card.locked { opacity: 0.55; }
+
+.toolbar { display: flex; gap: 10px; margin-top: 16px; }
+.toolbar.center { justify-content: center; }
+.hint { color: #8a93a5; font-size: 12px; }

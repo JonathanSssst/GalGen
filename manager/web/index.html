@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GalGen 管理器</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="brand">
+        <span class="brand-mark">G</span>
+        <span class="brand-text">GalGen</span>
+      </div>
+      <nav id="nav">
+        <a href="#" data-page="characters" class="nav-item active">角色</a>
+        <a href="#" data-page="scenes" class="nav-item">场景</a>
+        <a href="#" data-page="plots" class="nav-item">剧情</a>
+        <a href="#" data-page="chapters" class="nav-item">章节</a>
+        <a href="#" data-page="endings" class="nav-item">结局</a>
+        <a href="#" data-page="assets" class="nav-item">资产</a>
+        <a href="#" data-page="build" class="nav-item">生成</a>
+        <a href="#" data-page="settings" class="nav-item">设置</a>
+      </nav>
+      <div class="sidebar-foot">
+        <button id="btn-validate" class="btn btn-ghost" title="校验项目完整性">校验</button>
+      </div>
+    </aside>
+
+    <main id="main">
+      <header id="topbar">
+        <div id="project-title">GalGen 管理器</div>
+        <div class="topbar-right">
+          <div class="actions">
+            <button id="btn-new" class="btn btn-sm" title="新建项目（Ctrl+N）">新建</button>
+            <button id="btn-open" class="btn btn-sm" title="打开项目…（Ctrl+O）">打开</button>
+            <button id="btn-save-as" class="btn btn-sm" title="另存为…">另存为</button>
+            <button id="btn-save" class="btn btn-sm btn-primary" title="保存（Ctrl+S）">保存</button>
+          </div>
+          <div id="status"></div>
+        </div>
+      </header>
+      <section id="page-host"></section>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+
+  <script src="js/app.js"></script>
+  <script src="js/pages.js"></script>
+  <script src="js/plots.js"></script>
+</body>
+</html>

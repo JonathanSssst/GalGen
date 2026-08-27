@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GalGen 游戏</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="stage">
+    <img id="bg" alt="背景">
+    <img id="standee" alt="立绘">
+    <div id="topbar">
+      <span id="project-name"></span>
+      <div class="controls">
+        <button id="btn-menu" class="ctrl" title="菜单（Esc）">菜单</button>
+        <button id="btn-auto" class="ctrl" title="自动阅读（A）">自动</button>
+        <button id="btn-skip" class="ctrl" title="快进已读文本（S）">快进</button>
+        <select id="sel-speed" class="ctrl" title="文字速度">
+          <option value="15">慢</option>
+          <option value="30">中</option>
+          <option value="60">快</option>
+          <option value="120">超快</option>
+        </select>
+        <button id="btn-font" class="ctrl" title="切换字号">字号</button>
+      </div>
+    </div>
+    <div id="options"></div>
+    <div id="dialog-box">
+      <div id="name-label"></div>
+      <div id="dialog-text"></div>
+      <div id="advance-hint">▼</div>
+    </div>
+    <div id="overlay" class="hidden">
+      <div id="overlay-card"></div>
+    </div>
+    <div id="toast"></div>
+  </div>
+  <script src="js/game.js"></script>
+</body>
+</html>
