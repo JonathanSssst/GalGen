@@ -888,7 +888,7 @@ App.Pages.assets = {
       <div class="field-grid">
         <label class="field"><span>ID</span><input class="input-lg" readonly value="${esc(a.id)}"></label>
         <label class="field"><span>分类</span><select id="asset-cat-edit">${optionsHtml(cats, '', (c) => categoryLabel(c), a.category)}</select></label>
-        <label class="field field-full"><span>文件名</span><input class="input-lg" readonly value="${esc(a.file_name)}"></label>
+        <label class="field field-full"><span>文件名（可编辑重命名）</span><input class="input-lg" id="asset-file" value="${esc(a.file_name)}" title="修改后回车或失焦即重命名磁盘文件"></label>
       </div>
       <div class="asset-meta">
         <div class="meta-item"><span>类型</span><em>${esc(a.type)}</em></div>
@@ -911,6 +911,24 @@ App.Pages.assets = {
       a.tags = e.target.value.split(',').map((t) => t.trim()).filter(Boolean);
       commit();
     });
+    const fileInput = detail.querySelector('#asset-file');
+    const doRename = async () => {
+      const name = fileInput.value.trim();
+      if (!name || name === a.file_name) { fileInput.value = a.file_name; return; }
+      await flushCommit();
+      const res = await call('rename_asset', a.id, name);
+      if (res && res.error) { toast(res.error); fileInput.value = a.file_name; return; }
+      if (res && res.asset) {
+        Object.assign(a, res.asset);
+        const payload = await call('get_data');
+        if (payload) { App.filePath = payload.file_path || App.filePath; App.data = payload.data; }
+        resetAssetRefs();
+        toast('已重命名');
+        renderPage();
+      }
+    };
+    fileInput.addEventListener('blur', doRename);
+    fileInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') fileInput.blur(); });
     detail.querySelector('#asset-cat-edit').addEventListener('change', async (e) => {
       await flushCommit();
       const ok = await call('change_asset_category', a.id, e.target.value);

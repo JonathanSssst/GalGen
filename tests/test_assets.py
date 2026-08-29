@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from manager.core.assets import import_asset, infer_asset_type, is_supported_file  # noqa: E402
+from manager.core.assets import import_asset, infer_asset_type, is_supported_file, reclassify_asset, rename_asset  # noqa: E402
 from manager.core.gg_format import GalGenProject  # noqa: E402
 
 
@@ -95,10 +95,53 @@ class TestAssets(unittest.TestCase):
             src = td / "a.png"
             src.write_bytes(b"x")
             asset = import_asset(p, src, category="bg")
-            from manager.core.assets import reclassify_asset
 
             with self.assertRaises(ValueError):
                 reclassify_asset(p, asset, "nope")
+
+    def test_rename_asset_updates_file_and_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            p = GalGenProject.new()
+            p.save(td / "proj.gg")
+            src = td / "char.png"
+            src.write_bytes(b"\x89PNG fake")
+            asset = import_asset(p, src, category="standee")
+            old_abs = td / asset.rel_path
+            self.assertTrue(old_abs.exists())
+
+            rename_asset(p, asset, "hero_rename.png")
+            self.assertEqual(asset.file_name, "hero_rename.png")
+            self.assertTrue(asset.rel_path.endswith("hero_rename.png"))
+            self.assertFalse(old_abs.exists())
+            self.assertTrue((td / asset.rel_path).exists())
+            self.assertEqual((td / asset.rel_path).read_bytes(), b"\x89PNG fake")
+
+    def test_rename_asset_keeps_extension(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            p = GalGenProject.new()
+            p.save(td / "proj.gg")
+            src = td / "bg.png"
+            src.write_bytes(b"x")
+            asset = import_asset(p, src, category="bg")
+
+            rename_asset(p, asset, "night_scene")
+            self.assertEqual(asset.file_name, "night_scene.png")
+            self.assertTrue((td / asset.rel_path).exists())
+
+    def test_rename_asset_requires_name(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            p = GalGenProject.new()
+            p.save(td / "proj.gg")
+            src = td / "a.png"
+            src.write_bytes(b"x")
+            asset = import_asset(p, src, category="bg")
+
+            with self.assertRaises(ValueError):
+                rename_asset(p, asset, "   ") 
+            self.assertEqual(asset.file_name, "a.png")
 
 
 if __name__ == "__main__":

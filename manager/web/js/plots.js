@@ -144,29 +144,29 @@ App.Pages.plots = {
     this.renderTabs();
   },
 
-  /* 新建：悬浮选择类型（文本/选项/音效/视频） */
+  /* 新建：屏幕居中模态框选择类型（文本/选项/音效/视频） */
   newItem() {
-    const host = document.getElementById('page-host');
-    const anchor = host.querySelector('#plot-script-add');
-    if (!anchor) return;
-    const rect = anchor.getBoundingClientRect();
-    const menu = document.createElement('div');
-    menu.id = 'type-menu';
-    menu.style.cssText = `position:absolute;top:${rect.bottom + 4}px;left:${rect.left}px;z-index:200;`;
-    menu.innerHTML = `
-      <div class="type-menu">
-        <div class="type-menu-title">选择新建剧情类型</div>
-        ${[['text', '文本'], ['choice', '选项'], ['sfx', '音效'], ['video', '视频']].map(([t, label]) => `
-          <button class="btn type-menu-item" data-type="${t}">${label}</button>`).join('')}
-      </div>`;
-    host.appendChild(menu);
-    const close = () => menu.remove();
-    host.querySelectorAll('.type-menu-item').forEach((btn) => {
-      btn.addEventListener('click', () => { close(); this.addUnit(btn.dataset.type); });
+    const modal = openModal(`
+      <div class="type-modal">
+        <h3>选择新建剧情类型</h3>
+        <div class="type-menu-grid">
+          ${[['text', '文本', '角色发言或旁白，可引用函数'],
+             ['choice', '选项', '分支选择，选项指向函数'],
+             ['sfx', '音效', '纯音频：播放/等待/循环直到'],
+             ['video', '视频', '沉浸播放，播完自动下一条']].map(([t, label, desc]) => `
+            <button class="btn type-menu-item" data-type="${t}">
+              <b>${label}</b><span>${desc}</span>
+            </button>`).join('')}
+        </div>
+        <div class="toolbar" style="justify-content:flex-end;margin-top:14px;">
+          <button class="btn" id="type-cancel">取消</button>
+        </div>
+      </div>
+    `);
+    modal.querySelector('#type-cancel').addEventListener('click', closeModal);
+    modal.querySelectorAll('.type-menu-item').forEach((btn) => {
+      btn.addEventListener('click', () => { closeModal(); this.addUnit(btn.dataset.type); });
     });
-    setTimeout(() => document.addEventListener('click', function(e) {
-      if (!menu.contains(e.target) && e.target !== anchor) close();
-    }), 0);
   },
 
   async addUnit(type) {

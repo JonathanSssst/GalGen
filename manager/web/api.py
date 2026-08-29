@@ -229,6 +229,22 @@ class Api:
         self.dirty = True
         return True
 
+    def rename_asset(self, asset_id: str, new_name: str) -> dict:
+        """重命名资产文件（更新 file_name、磁盘文件与 rel_path）。"""
+        if not self.project:
+            return {"error": "尚未创建项目"}
+        asset = self.project.find_by_id("assets", asset_id)
+        if not asset:
+            return {"error": "资产不存在"}
+        try:
+            assets_core.rename_asset(self.project, asset, new_name)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        except OSError as exc:
+            return {"error": f"重命名失败：{exc}"}
+        self.dirty = True
+        return {"ok": True, "asset": _asset_to_dict(asset)}
+
     def asset_preview(self, asset_id: str) -> Optional[dict]:
         """返回资产预览数据：图片 base64；音频/视频返回本地 file:// URL。"""
         if not self.project:

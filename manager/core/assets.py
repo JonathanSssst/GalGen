@@ -114,6 +114,35 @@ def reclassify_asset(project: GalGenProject, asset: Asset, new_category: str) ->
     return asset
 
 
+def rename_asset(project: GalGenProject, asset: Asset, new_name: str) -> Asset:
+    """重命名资产文件：更新 file_name，磁盘文件改名，同步 rel_path。
+
+    new_name 可含扩展名；未含扩展名时自动沿用原扩展名。
+    """
+    new_name = (new_name or "").strip()
+    if not new_name:
+        raise ValueError("文件名不能为空")
+
+    old_name = asset.file_name or ""
+    old_ext = Path(old_name).suffix
+    # 未提供扩展名时补上原扩展名
+    if not Path(new_name).suffix and old_ext:
+        new_name = new_name + old_ext
+    if new_name == old_name:
+        return asset
+
+    old_path = project.asset_path(asset)
+    new_path = old_path.with_name(new_name)
+    new_path = _unique_path(new_path)
+
+    if old_path.exists():
+        old_path.replace(new_path)
+
+    asset.file_name = new_path.name
+    asset.rel_path = new_path.relative_to(project.project_dir()).as_posix()
+    return asset
+
+
 def _unique_path(path: Path) -> Path:
     if not path.exists():
         return path
