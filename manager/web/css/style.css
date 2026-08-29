@@ -592,6 +592,18 @@ table.data tr.selected { background: #d9edff; }
 }
 .flow-svg { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
 .flow-svg path { fill: none; stroke: #8a97a8; stroke-width: 1.6; }
+.flow-arrow-label {
+  font-size: 11px;
+  font-weight: 600;
+  fill: #4b5563;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.flow-forest { cursor: grab; }
+.flow-forest.flow-dragging { cursor: grabbing; user-select: none; }
 .flow-orphan .flow-chapter-title { color: #d9822b; }
 
 

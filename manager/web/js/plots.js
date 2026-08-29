@@ -715,26 +715,30 @@ App.Pages.plots = {
       return { kind: 'next' };
     };
 
-    // 一个剧情节点的子节点（保留顺序、去重）：普通剧情→自然下一条；选项→各自落点
+    // 一个剧情节点的子节点（保留顺序、去重）：普通剧情→自然下一条；选项→各自落点。
+    // 每个子节点带 label：选项剧情标注对应选项内容，便于区分不同分支走向。
     const childrenOf = (sid) => {
       const s = scriptById[sid];
       if (!s) return [];
       const d = dlg(s);
-      const ids = [];
-      const push = (x) => { if (!ids.includes(x)) ids.push(x); };
+      const out = [];
+      const seen = {};
+      const push = (id, label) => { if (seen[id]) return; seen[id] = 1; out.push({ id, label }); };
+      const optLabel = (o, i) => String(o.content || '').trim() || (['A', 'B', 'C', 'D', 'E', 'F'][i] || '选项' + (i + 1));
       if (d.type === 'choice') {
-        (d.options || []).forEach((o) => {
+        (d.options || []).forEach((o, i) => {
           const t = resolveOption(o);
-          if (t.kind === 'script') push(t.id);
-          else if (t.kind === 'ending') push('end:' + t.id);
-          else { const n = nextMap[sid]; if (n) push(n); }
+          const label = optLabel(o, i);
+          if (t.kind === 'script') push(t.id, label);
+          else if (t.kind === 'ending') push('end:' + t.id, label);
+          else { const n = nextMap[sid]; if (n) push(n, label); }
         });
-        if (!(d.options || []).length) { const n = nextMap[sid]; if (n) push(n); }
+        if (!(d.options || []).length) { const n = nextMap[sid]; if (n) push(n, ''); }
       } else {
         const n = nextMap[sid];
-        if (n) push(n);
+        if (n) push(n, '');
       }
-      return ids;
+      return out;
     };
 
     // 由根构建树（同一剧情取第一个父节点，防环）
@@ -744,10 +748,10 @@ App.Pages.plots = {
       const stack = [root];
       while (stack.length) {
         const cur = stack.shift();
-        childrenOf(cur.id).forEach((cid) => {
-          if (placed.has(cid)) return;
-          placed.add(cid);
-          const child = { id: cid, children: [] };
+        childrenOf(cur.id).forEach((c) => {
+          if (placed.has(c.id)) return;
+          placed.add(c.id);
+          const child = { id: c.id, label: c.label, children: [] };
           cur.children.push(child);
           stack.push(child);
         });
@@ -791,7 +795,7 @@ App.Pages.plots = {
         const x = n.cx - BOX_W / 2;
         boxes.push({ n, x, y });
         n.children.forEach((c) => {
-          edges.push({ from: n, to: c });
+          edges.push({ from: n, to: c, label: c.label });
           walk(c);
         });
       })(root);
@@ -828,7 +832,8 @@ App.Pages.plots = {
         </div>`;
       }).join('');
 
-      // 箭头（SVG，从父底中点到子顶中点），坐标直接取自最终方块位置
+      // 箭头（SVG，从父底中点到子顶中点），坐标直接取自最终方块位置；
+      // 选项剧情的分支箭头标注对应选项内容，垂直走向的标签放右侧，弯折走向的标签放横线中点上方。
       const boxByNode = {};
       boxes.forEach((b) => { boxByNode[b.n.id] = b; });
       const arrowPaths = edges.map((e) => {
@@ -836,7 +841,14 @@ App.Pages.plots = {
         const sx = from.x + BOX_W / 2, sy = from.y + BOX_H;
         const ex = to.x + BOX_W / 2, ey = to.y;
         const my = sy + (ey - sy) / 2;
-        return `<path d="M ${sx} ${sy} L ${sx} ${my} L ${ex} ${my} L ${ex} ${ey}" marker-end="url(#flowArrow)"/>`;
+        let label = '';
+        if (e.label) {
+          const raw = String(e.label);
+          const txt = esc(raw.slice(0, 14)) + (raw.length > 14 ? '…' : '');
+          const sameX = Math.abs(sx - ex) < 1;
+          label = `<text class="flow-arrow-label" x="${sameX ? sx + 6 : (sx + ex) / 2}" y="${sameX ? my : my - 7}" text-anchor="${sameX ? 'start' : 'middle'}">${txt}</text>`;
+        }
+        return `<path d="M ${sx} ${sy} L ${sx} ${my} L ${ex} ${my} L ${ex} ${ey}" marker-end="url(#flowArrow)"/>${label}`;
       }).join('');
 
       const svg = `<svg class="flow-svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
@@ -895,12 +907,16 @@ App.Pages.plots = {
     }
 
     content.innerHTML = `
-      <div class="hint" style="margin-bottom:10px;">分支树（流程图）：方块=单条剧情，箭头=剧情走向；点绿框为当前剧情。点击方块可在左侧定位该剧情。</div>
+      <div class="hint" style="margin-bottom:10px;">分支树（流程图）：方块=单条剧情，箭头=剧情走向，选项分支的箭头会标注选项内容；按住鼠标拖拽可平移视图。点击方块可在左侧定位该剧情（当前剧情为绿框）。</div>
       <div class="flow-forest" style="position:relative;height:${cursorY + 40}px;">${rendered.join('')}</div>`;
+
+    const forest = content.querySelector('.flow-forest');
+    this.bindFlowDrag(forest);
 
     content.querySelectorAll('.flow-box[data-script]').forEach((box) => {
       box.addEventListener('click', (e) => {
         if (box.classList.contains('end')) return;
+        if (forest._flowDragMoved) return;
         const sid = box.dataset.script;
         const s = scriptById[sid];
         if (!s) return;
@@ -910,6 +926,35 @@ App.Pages.plots = {
         this.updateScripts();
         this.renderTabs();
       });
+    });
+  },
+
+  /* 拖拽平移分支树画布（transform 位移，不参与自动布局，刷新后复位） */
+  bindFlowDrag(forestEl) {
+    if (!forestEl || forestEl._flowBound) return;
+    forestEl._flowBound = true;
+    let startX = 0, startY = 0, ox = 0, oy = 0, down = false;
+    forestEl.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      const off = forestEl._flowOffset || { x: 0, y: 0 };
+      startX = e.clientX; startY = e.clientY; ox = off.x; oy = off.y;
+      down = true;
+      forestEl._flowDragMoved = false;
+      forestEl.classList.add('flow-dragging');
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!down) return;
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      if (Math.abs(dx) + Math.abs(dy) > 3) forestEl._flowDragMoved = true;
+      if (forestEl._flowDragMoved) {
+        const nx = ox + dx, ny = oy + dy;
+        forestEl._flowOffset = { x: nx, y: ny };
+        forestEl.style.transform = `translate(${nx}px, ${ny}px)`;
+      }
+    });
+    window.addEventListener('mouseup', () => {
+      down = false;
+      forestEl.classList.remove('flow-dragging');
     });
   },
 
