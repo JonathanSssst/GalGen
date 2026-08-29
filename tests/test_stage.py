@@ -20,27 +20,24 @@ def _make_project(root: Path):
     p.characters = [Character(id="char_0001", name="林晓")]
     p.scenes = [Scene(id="scene_0001", name="天台", background="")]
     p.scripts = [
-        Script(
-            id="script_0001",
-            dialogs=[
-                Dialog(id="dlg_0001", type="text", character_id="char_0001", content="你好呀。"),
-                Dialog(
-                    id="dlg_0002",
-                    type="choice",
-                    content="接下来去哪？",
-                    options=[
-                        Option(
-                            id="opt_0001",
-                            content="去天台",
-                            jump_to="dlg_0003",
-                            effects=[{"target": "char_0001", "variable": "affection", "operation": "add", "value": 5}],
-                        ),
-                        Option(id="opt_0002", content="回教室", ending_id="end_0001"),
-                    ],
-                ),
-                Dialog(id="dlg_0003", type="text", content="天台的风好大。"),
-            ],
-        )
+        Script(id="script_0001", dialogs=[Dialog(id="dlg_0001", type="text", character_id="char_0001", content="你好呀。")]),
+        Script(id="script_0002", dialogs=[
+            Dialog(
+                id="dlg_0002",
+                type="choice",
+                content="接下来去哪？",
+                options=[
+                    Option(
+                        id="opt_0001",
+                        content="去天台",
+                        jump_to="script_0003",
+                        effects=[{"target": "char_0001", "variable": "affection", "operation": "add", "value": 5}],
+                    ),
+                    Option(id="opt_0002", content="回教室", ending_id="end_0001"),
+                ],
+            ),
+        ]),
+        Script(id="script_0003", dialogs=[Dialog(id="dlg_0003", type="text", content="天台的风好大。")]),
     ]
     p.endings = [Ending(id="end_0001", name="回家结局", description="你选择了回家。")]
     p.save(root / "proj.gg")

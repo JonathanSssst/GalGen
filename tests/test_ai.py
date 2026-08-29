@@ -21,16 +21,12 @@ def make_project(td: Path) -> GalGenProject:
     proj = GalGenProject.new()
     proj.characters.append(Character(id="char_0001", name="林晓"))
     proj.characters.append(Character(id="char_0002", name="陈默"))
-    proj.scripts.append(Script(
-        id="script_0001",
-        chapter_id="",
-        dialogs=[
-            Dialog(id="dlg_0001", type="text", character_id="char_0001", content="你好呀。"),
-            Dialog(id="dlg_0002", type="text", character_id="char_0002", content="嗯。"),
-            Dialog(id="dlg_0003", type="text", character_id="char_0001", content="", voice="asset_0009"),
-            Dialog(id="dlg_0004", type="choice", character_id="char_0001", content="去吗？"),
-        ],
-    ))
+    proj.scripts.extend([
+        Script(id="script_0001", chapter_id="", order=0, dialogs=[Dialog(id="dlg_0001", type="text", character_id="char_0001", content="你好呀。")]),
+        Script(id="script_0002", chapter_id="", order=1, dialogs=[Dialog(id="dlg_0002", type="text", character_id="char_0002", content="嗯。")]),
+        Script(id="script_0003", chapter_id="", order=2, dialogs=[Dialog(id="dlg_0003", type="text", character_id="char_0001", content="", voice="asset_0009")]),
+        Script(id="script_0004", chapter_id="", order=3, dialogs=[Dialog(id="dlg_0004", type="choice", character_id="char_0001", content="去吗？")]),
+    ])
     proj.save(td / "proj.gg")
     return proj
 
@@ -110,7 +106,7 @@ class TestGenerate(unittest.TestCase):
         voices = [a for a in self.project.assets if a.category == "voice"]
         self.assertEqual(len(voices), 2)
         self.assertTrue(self.project.find_by_id("assets", self.project.scripts[0].dialogs[0].voice))
-        self.assertTrue(self.project.find_by_id("assets", self.project.scripts[0].dialogs[1].voice))
+        self.assertTrue(self.project.find_by_id("assets", self.project.scripts[1].dialogs[0].voice))
 
         # 文件已写入项目目录
         for a in voices:
@@ -133,13 +129,13 @@ class TestGenerate(unittest.TestCase):
     def test_script_scope(self):
         mapping = {"char_0001": "zh-CN-XiaoxiaoNeural"}
         self.project.scripts.append(Script(
-            id="script_0002",
+            id="script_0099",
             dialogs=[Dialog(
                 id="dlg_0101", type="text", character_id="char_0001", content="第二段。"
             )],
         ))
         with patch("manager.core.ai.synthesize", side_effect=_fake_synthesize):
-            result = ai_core.generate_voices(self.project, mapping, script_id="script_0002")
+            result = ai_core.generate_voices(self.project, mapping, script_id="script_0099")
         self.assertEqual(result["generated"], 1)
         self.assertEqual(len([a for a in self.project.assets if a.category == "voice"]), 1)
 

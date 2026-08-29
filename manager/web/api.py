@@ -20,7 +20,7 @@ from ..core import export as export_core
 from ..core import fonts as fonts_core
 from ..core import references as refs_core
 from ..core.gg_format import FORMAT_VERSION, GalGenProject, from_dict, now_iso
-from ..core.models import Asset, Character, Chapter, Dialog, Effect, Ending, Option, ProjectInfo, Scene, Script
+from ..core.models import Asset, Character, Chapter, Dialog, Effect, Ending, Function, Option, ProjectInfo, Scene, Script
 from ..core.validator import ProjectValidator
 
 DEFAULT_FILE_TYPES = ("GalGen 项目 (*.gg)",)
@@ -38,6 +38,7 @@ _COLLECTION_MODELS = {
     "scripts": Script,
     "assets": Asset,
     "endings": Ending,
+    "functions": Function,
 }
 
 
@@ -135,6 +136,18 @@ class Api:
     def get_last_project(self) -> str:
         return config_core.get_last_project()
 
+    def ui_get(self, key: str, default=None):
+        """读取全局 UI 配置（如分隔条宽度）。"""
+        cfg = config_core.load()
+        return cfg.get("ui", {}).get(key, default)
+
+    def ui_set(self, key: str, value) -> bool:
+        """写入全局 UI 配置（跨项目持久化）。"""
+        cfg = config_core.load()
+        cfg.setdefault("ui", {})[key] = value
+        config_core.save(cfg)
+        return True
+
     def set_window_title(self, title: str) -> None:
         try:
             import webview
@@ -164,6 +177,7 @@ class Api:
                 setattr(self.project, {
                     "project": "project", "characters": "characters", "scenes": "scenes",
                     "chapters": "chapters", "scripts": "scripts", "assets": "assets", "endings": "endings",
+                    "functions": "functions",
                 }.get(key, key), items)
         self.dirty = True
         return True

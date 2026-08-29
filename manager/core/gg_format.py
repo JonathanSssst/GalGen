@@ -23,6 +23,7 @@ from .models import (
     Dialog,
     Effect,
     Ending,
+    Function,
     Option,
     ProjectDefaults,
     ProjectInfo,
@@ -32,7 +33,8 @@ from .models import (
 
 T = TypeVar("T")
 
-FORMAT_VERSION = 1
+# v2：剧情单条化（每条剧情=一个对话单元，含 sfx/video/actions/函数库）。
+FORMAT_VERSION = 2
 GENERATOR = "GalGen"
 
 _ID_PATTERN = re.compile(r"^([a-z]+)_(\d+)$")
@@ -138,6 +140,40 @@ def _character_from_dict(raw: dict) -> Character:
     return char
 
 
+def _scripts_from_dict(raw_list) -> List[Script]:
+    """剧情构造：兼容旧格式（一条剧情含多条对话 → 拆分为单条剧情单元）。
+
+    旧格式一条 Script 含 dialogs 数组；v2.1 起一条剧情 = 一个对话单元。
+    拆分时按序生成新 ID（原 script id 保留为第一条），并为每条赋 order。
+    """
+    result: List[Script] = []
+    for raw in raw_list or []:
+        raw = raw or {}
+        script = from_dict(Script, raw)
+        dialogs = raw.get("dialogs") or []
+        # 新格式：本身就是单条（dialogs 缺失或为空但可能有内嵌字段）或只有一条
+        if len(dialogs) <= 1:
+            if script.dialogs:
+                result.append(script)
+            continue
+        # 旧格式：多条对话 → 拆分为多个单条剧情
+        base_id = script.id or "script"
+        for i, d_raw in enumerate(dialogs):
+            d = from_dict(Dialog, d_raw)
+            sub = Script(
+                id=f"{base_id}_{i:03d}" if i else base_id,
+                chapter_id=script.chapter_id,
+                order=i,
+                dialogs=[d],
+            )
+            result.append(sub)
+    # 为未显式设置 order 的剧情按出现顺序编号
+    for i, s in enumerate(result):
+        if not s.order:
+            s.order = i
+    return result
+
+
 @dataclasses.dataclass
 class GalGenProject:
     """内存中的项目容器，对应 .gg 文件整体（meta + data）。"""
@@ -155,6 +191,7 @@ class GalGenProject:
     scripts: List[Script] = dataclasses.field(default_factory=list)
     assets: List[Asset] = dataclasses.field(default_factory=list)
     endings: List[Ending] = dataclasses.field(default_factory=list)
+    functions: List[Function] = dataclasses.field(default_factory=list)
 
     # 非序列化字段
     file_path: str = dataclasses.field(default="", repr=False, compare=False)
@@ -187,6 +224,7 @@ class GalGenProject:
             "scripts": [dataclasses.asdict(s) for s in self.scripts],
             "assets": [dataclasses.asdict(a) for a in self.assets],
             "endings": [dataclasses.asdict(e) for e in self.endings],
+            "functions": [dataclasses.asdict(f) for f in self.functions],
         }
         return {"meta": meta, "data": data}
 
@@ -206,9 +244,10 @@ class GalGenProject:
             characters=[_character_from_dict(c) for c in data.get("characters", [])],
             scenes=[from_dict(Scene, s) for s in data.get("scenes", [])],
             chapters=[from_dict(Chapter, c) for c in data.get("chapters", [])],
-            scripts=[from_dict(Script, s) for s in data.get("scripts", [])],
+            scripts=_scripts_from_dict(data.get("scripts", [])),
             assets=[from_dict(Asset, a) for a in data.get("assets", [])],
             endings=[from_dict(Ending, e) for e in data.get("endings", [])],
+            functions=[from_dict(Function, f) for f in data.get("functions", [])],
         )
 
     # ------------------------------------------------------------------ 读写
@@ -218,6 +257,9 @@ class GalGenProject:
         path = Path(path) if path else Path(self.file_path)
         if not str(path).endswith(".gg"):
             path = path.with_suffix(".gg")
+        # 保存时升级到最新格式版本
+        if self.format_version < FORMAT_VERSION:
+            self.format_version = FORMAT_VERSION
         self.updated_at = now_iso()
         content = json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
         path.write_text(content, encoding="utf-8", newline="\n")
@@ -244,6 +286,7 @@ class GalGenProject:
             "scripts": "script",
             "assets": "asset",
             "endings": "end",
+            "functions": "fn",
         }[collection_name]
         max_n = 0
         for item in items:

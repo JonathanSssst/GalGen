@@ -16,6 +16,7 @@ from .models import (
     DIALOG_TYPES,
     ENDING_TYPES,
     OPERATIONS,
+    SFX_PLAY_MODES,
 )
 
 
@@ -50,6 +51,7 @@ class ProjectValidator:
         self._check_assets()
         self._check_chapters()
         self._check_scripts()
+        self._check_functions()
         self._check_endings()
         self._check_references()
         return list(self.issues)
@@ -107,29 +109,68 @@ class ProjectValidator:
                 self._error(loc, f"起始剧情不存在：{ch.start_script}")
 
     def _check_scripts(self):
+        all_script_ids = {s.id for s in self.project.scripts}
         for sc in self.project.scripts:
             loc = sc.id or "script"
-            dialog_ids = {d.id for d in sc.dialogs if d.id}
-            if sc.dialogs and any(not d.id for d in sc.dialogs):
-                self._error(loc, "存在缺少 ID 的对话")
-            for d in sc.dialogs:
-                dloc = f"{sc.id or 'script'}/{d.id or '?'}"
-                if d.type not in DIALOG_TYPES:
-                    self._error(dloc, f"非法对话类型：{d.type}")
-                if d.type == "choice" and not d.options:
-                    self._error(dloc, "选项类型对话缺少选项")
-                for opt in d.options:
-                    if opt.jump_to and opt.jump_to not in dialog_ids:
-                        # 支持跨脚本跳转（jump_to 指向另一个脚本 ID）
-                        if not self.project.find_by_id("scripts", opt.jump_to):
-                            self._error(dloc, f"选项跳转目标不存在：{opt.jump_to}")
-                    for e in opt.effects:
-                        if not e.variable:
-                            self._error(dloc, "效果缺少变量名")
-                        if e.operation not in OPERATIONS:
-                            self._error(dloc, f"非法操作：{e.operation}")
-                        if e.target != "global" and not self.project.find_by_id("characters", e.target):
-                            self._error(dloc, f"效果目标角色不存在：{e.target}")
+            if not sc.dialogs:
+                self._error(loc, "剧情缺少对话单元")
+                continue
+            d = sc.dialogs[0]
+            dloc = f"{sc.id or 'script'}"
+            if d.type not in DIALOG_TYPES:
+                self._error(dloc, f"非法剧情类型：{d.type}")
+            if d.type == "choice" and not d.options:
+                self._error(dloc, "选项类型剧情缺少选项")
+            for opt in d.options:
+                # v2.1：选项跳转经函数 action_id；旧字段 jump_to 指向剧情 ID
+                if opt.action_id:
+                    fn = self.project.find_by_id("functions", opt.action_id)
+                    if not fn:
+                        self._error(dloc, f"选项引用的函数不存在：{opt.action_id}")
+                if opt.jump_to and opt.jump_to not in all_script_ids:
+                    self._error(dloc, f"选项跳转目标不存在：{opt.jump_to}")
+                for e in opt.effects:
+                    if not e.variable:
+                        self._error(dloc, "效果缺少变量名")
+                    if e.operation not in OPERATIONS:
+                        self._error(dloc, f"非法操作：{e.operation}")
+                    if e.target != "global" and not self.project.find_by_id("characters", e.target):
+                        self._error(dloc, f"效果目标角色不存在：{e.target}")
+            # 功能引用
+            for fn_id in d.actions:
+                if not self.project.find_by_id("functions", fn_id):
+                    self._error(dloc, f"剧情引用的函数不存在：{fn_id}")
+            # 音效引用与循环停止目标
+            for sfx in d.sfx:
+                if sfx.asset_id and not self.project.find_by_id("assets", sfx.asset_id):
+                    self._error(dloc, f"音效资产不存在：{sfx.asset_id}")
+                if sfx.play_mode not in SFX_PLAY_MODES:
+                    self._error(dloc, f"非法音效播放方式：{sfx.play_mode}")
+                if sfx.play_mode == "loop_until" and sfx.stop_script_id and sfx.stop_script_id not in all_script_ids:
+                    self._error(dloc, f"循环停止剧情不存在：{sfx.stop_script_id}")
+            # 视频引用
+            if d.video_asset_id and not self.project.find_by_id("assets", d.video_asset_id):
+                self._error(dloc, f"视频资产不存在：{d.video_asset_id}")
+
+    def _check_functions(self):
+        all_script_ids = {s.id for s in self.project.scripts}
+        for fn in self.project.functions:
+            loc = f"functions/{fn.id or '?'}"
+            if fn.jump_to and fn.jump_to not in all_script_ids:
+                self._error(loc, f"函数跳转目标不存在：{fn.jump_to}")
+            if fn.unlock_script and not self.project.find_by_id("scripts", fn.unlock_script):
+                self._error(loc, f"函数解锁剧情不存在：{fn.unlock_script}")
+            if fn.unlock_cg and not self.project.find_by_id("assets", fn.unlock_cg):
+                self._error(loc, f"函数解锁CG不存在：{fn.unlock_cg}")
+            if fn.ending_id and not self.project.find_by_id("endings", fn.ending_id):
+                self._error(loc, f"函数指向结局不存在：{fn.ending_id}")
+            for e in fn.effects:
+                if not e.variable:
+                    self._error(loc, "函数效果缺少变量名")
+                if e.operation not in OPERATIONS:
+                    self._error(loc, f"函数非法操作：{e.operation}")
+                if e.target != "global" and not self.project.find_by_id("characters", e.target):
+                    self._error(loc, f"函数效果目标角色不存在：{e.target}")
 
     def _check_endings(self):
         for e in self.project.endings:
@@ -162,8 +203,8 @@ class ProjectValidator:
     def _check_dialog_asset_refs(self):
         for sc in self.project.scripts:
             for d in sc.dialogs:
-                loc = f"scripts/{sc.id or '?'}/{d.id or '?'}"
-                for attr in ("standee", "voice", "scene_id", "bgm"):
+                loc = f"scripts/{sc.id or '?'}"
+                for attr in ("standee", "voice", "scene_id"):
                     ref = getattr(d, attr)
                     if ref and not self.project.find_by_id("assets" if attr != "scene_id" else "scenes", ref):
                         self._error(loc, f"{attr} 引用不存在：{ref}")

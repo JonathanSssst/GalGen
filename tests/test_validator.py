@@ -30,22 +30,20 @@ def _make_project():
     p.assets = [Asset(id="asset_0001", type="image", category="bg", file_name="bg.png", rel_path="")]
     p.endings = [Ending(id="end_0001", name="结局")]
     p.scripts = [
-        Script(
-            id="script_0001",
-            chapter_id="chap_0001",
-            dialogs=[
-                Dialog(id="dlg_0001", type="text", character_id="char_0001", content="你好"),
-                Dialog(
-                    id="dlg_0002",
-                    type="choice",
-                    content="选择",
-                    options=[
-                        Option(id="opt_0001", content="A", jump_to="dlg_0001"),
-                        Option(id="opt_0002", content="B", jump_to="dlg_0001"),
-                    ],
-                ),
-            ],
-        )
+        Script(id="script_0001", chapter_id="chap_0001", dialogs=[
+            Dialog(id="dlg_0001", type="text", character_id="char_0001", content="你好"),
+        ]),
+        Script(id="script_0002", chapter_id="chap_0001", dialogs=[
+            Dialog(
+                id="dlg_0002",
+                type="choice",
+                content="选择",
+                options=[
+                    Option(id="opt_0001", content="A", jump_to="script_0001"),
+                    Option(id="opt_0002", content="B", jump_to="script_0001"),
+                ],
+            ),
+        ]),
     ]
     p.chapters = [Chapter(id="chap_0001", name="第一章", order=1, start_script="script_0001")]
     return p
@@ -59,14 +57,14 @@ class TestValidator(unittest.TestCase):
 
     def test_broken_jump_detected(self):
         p = _make_project()
-        p.scripts[0].dialogs[1].options[0].jump_to = "dlg_9999"
+        p.scripts[1].dialogs[0].options[0].jump_to = "dlg_9999"
         issues = ProjectValidator(p).validate()
         self.assertTrue(any("dlg_9999" in i.message for i in issues if i.severity == "error"))
 
     def test_cross_script_jump_allowed(self):
         p = _make_project()
-        p.scripts.append(Script(id="script_0002", dialogs=[Dialog(id="d1", type="text", content="x")]))
-        p.scripts[0].dialogs[1].options[0].jump_to = "script_0002"
+        p.scripts.append(Script(id="script_0003", dialogs=[Dialog(id="d1", type="text", content="x")]))
+        p.scripts[1].dialogs[0].options[0].jump_to = "script_0003"
         issues = ProjectValidator(p).validate()
         self.assertFalse(any("跳转目标不存在" in i.message for i in issues if i.severity == "error"))
 
@@ -93,7 +91,7 @@ class TestValidator(unittest.TestCase):
 
     def test_choice_without_options_detected(self):
         p = _make_project()
-        p.scripts[0].dialogs[1].options = []
+        p.scripts[1].dialogs[0].options = []
         issues = ProjectValidator(p).validate()
         self.assertTrue(any("缺少选项" in i.message for i in issues if i.severity == "error"))
 

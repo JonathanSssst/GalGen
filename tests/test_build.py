@@ -42,16 +42,15 @@ class TestBuild(unittest.TestCase):
         p.project.name = '坏项目'
         p.scripts = [
             Script(id='script_0001', dialogs=[Dialog(id='d1', type='text', content='x')]),
+            Script(id='script_0002', dialogs=[
+                Dialog(
+                    id='d2',
+                    type='choice',
+                    content='选择',
+                    options=[Option(id='o1', content='a', jump_to='nope')],
+                )
+            ]),
         ]
-        # 加入一个坏的跳转引用
-        p.scripts[0].dialogs.append(
-            Dialog(
-                id='d2',
-                type='choice',
-                content='选择',
-                options=[Option(id='o1', content='a', jump_to='nope')],
-            )
-        )
         with tempfile.TemporaryDirectory() as td:
             result = build_mod.build_exe(p, Path(td) / 'out')
             self.assertFalse(result['ok'])

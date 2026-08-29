@@ -12,7 +12,14 @@ WEB_DIR = Path(__file__).resolve().parent / "web"
 
 def main():
     api = Api()
-    webview.create_window(
+
+    def on_loaded():
+        try:
+            webview.windows[0].maximize()
+        except Exception:
+            pass
+
+    window = webview.create_window(
         "GalGen 管理器",
         url=str(WEB_DIR / "index.html"),
         js_api=api,
@@ -21,7 +28,7 @@ def main():
         min_size=(960, 640),
         background_color="#f4f6fa",
     )
-    webview.start()
+    webview.start(on_loaded)
 
 
 if __name__ == "__main__":

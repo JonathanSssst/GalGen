@@ -53,6 +53,14 @@ def build_command(project: GalGenProject, publish: Path, work_dir: Path, dist_di
         cmd.append("--onefile")
     else:
         cmd.append("--onedir")
+    # 自定义 exe 图标（ico 资产）
+    icon_asset_id = getattr(project.project, "exe_icon", "")
+    if icon_asset_id:
+        icon_asset = project.find_by_id("assets", icon_asset_id)
+        if icon_asset:
+            icon_path = project.asset_path(icon_asset)
+            if icon_path.exists() and icon_path.suffix.lower() == ".ico":
+                cmd += ["--icon", str(icon_path)]
     for item in publish.iterdir():
         if item.name in ("launcher.py", "__pycache__"):
             continue

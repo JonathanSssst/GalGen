@@ -135,15 +135,34 @@ function playVoice(assetId) {
   if (!assetId) return;
   const url = src(assetId);
   if (!url) return;
+  // 互斥音效：有语音播放时暂停
+  pauseExclusiveSfx();
   const a = new Audio(url);
   a.volume = (G.cfg.voiceVolume || 0) / 100;
+  a.onended = () => resumeExclusiveSfx();
   a.play().catch(() => { /* 忽略 */ });
   G.audio.voice = a;
+}
+
+function pauseExclusiveSfx() {
+  if (G.sfxAudio && !G.sfxAudio.paused) { G.sfxAudio.pause(); G._sfxPaused = true; }
+  if (G.loopSfx && G.loopSfx.audio && !G.loopSfx.audio.paused) { G.loopSfx.audio.pause(); G._loopPaused = true; }
+}
+
+function resumeExclusiveSfx() {
+  if (G._sfxPaused && G.sfxAudio) { G.sfxAudio.play().catch(() => {}); G._sfxPaused = false; }
+  if (G._loopPaused && G.loopSfx && G.loopSfx.audio) { G.loopSfx.audio.play().catch(() => {}); G._loopPaused = false; }
 }
 
 function stopAllAudio() {
   if (G.audio.bgm) { G.audio.bgm.pause(); G.audio.bgm = null; }
   G.audio.bgmId = '';
+  if (G.audio.voice) { G.audio.voice.pause(); G.audio.voice = null; }
+  if (G.sfxAudio) { G.sfxAudio.pause(); G.sfxAudio = null; }
+  G._sfxPaused = false;
+  if (G.loopSfx) { G.loopSfx.audio.pause(); G.loopSfx = null; }
+  G._loopPaused = false;
+  if (G.videoEl) { G.videoEl.remove(); G.videoEl = null; $('dialog-box').style.display = ''; }
 }
 
 /* ------------------------- 初始化 ------------------------- */
@@ -620,9 +639,9 @@ function showEndings() {
 /* ------------------------- 剧情推进 ------------------------- */
 
 function showDialog(i) {
-  const d = G.script.dialogs[i];
+  const d = G.script.dialogs[0];
   if (!d) { endScript(); return; }
-  G.idx = i;
+  G.idx = 0;
   G.typingDone = false;
   G.wasRead = G.readSet.has(keyOf(d));
 
@@ -636,15 +655,25 @@ function showDialog(i) {
   if (standeeUrl) { st.src = standeeUrl; st.style.display = 'block'; } else { st.style.display = 'none'; }
   $('name-label').textContent = speaker;
 
-  setBgm(d.bgm);
+  stopAllAudio();
   playVoice(d.voice);
 
   hideOptions();
   G.phase = 'reading';
+
+  // 类型分发：sfx / video / text / choice
+  if (d.type === 'sfx') {
+    playSfxThen(d);
+    return;
+  }
+  if (d.type === 'video') {
+    playVideoThen(d);
+    return;
+  }
+
   typeText($('dialog-text'), d.content || '', () => {
     G.typingDone = true;
     G.readSet.add(keyOf(d));
-    unlockBgm(d.bgm);
     persistProgress();
     if (d.type === 'choice') { showOptions(d); return; }
     maybeAuto();
@@ -677,22 +706,23 @@ function typeText(el, text, onDone) {
 
 function completeTyping() {
   clearTimeout(G.typeTimer);
-  const d = G.script.dialogs[G.idx];
+  const d = G.script.dialogs[0];
   $('dialog-text').textContent = d.content || '';
   G.typingDone = true;
   G.readSet.add(keyOf(d));
-  unlockBgm(d.bgm);
   persistProgress();
   if (d.type === 'choice') showOptions(d);
 }
 
 function advance() {
   if (G.phase === 'idle' || G.phase === 'ending') return;
+  if (G.phase === 'sfx') return;
+  if (G.phase === 'video') return;
   if (!G.typingDone) { completeTyping(); return; }
   if (G.phase === 'options') return;
-  const next = G.idx + 1;
-  if (next < G.script.dialogs.length) showDialog(next);
-  else endScript();
+  // 单条剧情播放完毕 → 自动播下一条剧情
+  executeActions();
+  endScript();
 }
 
 function maybeAuto() {
@@ -703,6 +733,104 @@ function maybeAuto() {
   }
   if (G.autoOn) setTimeout(advance, G.cfg.autoDelay * 1000);
   else if (G.skipOn) setTimeout(advance, 90);
+}
+
+/* ------------------------- 音效 / 视频 / 功能 ------------------------- */
+
+function playSfxThen(d) {
+  const sfx = (d.sfx || [])[0];
+  if (!sfx) { endScript(); return; }
+  const url = src(sfx.asset_id);
+  if (!url) { endScript(); return; }
+  G.phase = 'sfx';
+  const a = new Audio(url);
+  a.volume = (G.cfg.seVolume || 0) / 100;
+  a.playbackRate = Math.max(0.25, sfx.rate || 1);
+  if (sfx.exclusive) G.sfxAudio = a;
+  const fadeIn = sfx.fade_in || 0;
+  const fadeOut = sfx.fade_out || 0;
+  if (fadeIn > 0) {
+    a.volume = 0;
+    const t0 = performance.now();
+    const ramp = (t) => {
+      const p = Math.min(1, (t - t0) / (fadeIn * 1000));
+      a.volume = p * (G.cfg.seVolume || 0) / 100;
+      if (p < 1) requestAnimationFrame(ramp);
+    };
+    requestAnimationFrame(ramp);
+  }
+  if (sfx.play_mode === 'play') {
+    // 播放后立即下一条
+    a.play().catch(() => {});
+    endScript();
+    return;
+  }
+  if (sfx.play_mode === 'play_and_wait') {
+    a.onended = () => endScript();
+    a.play().catch(() => endScript());
+    return;
+  }
+  // loop_until：循环播放，直到指定剧情停止
+  a.loop = true;
+  G.loopSfx = { audio: a, stopScriptId: sfx.stop_script_id };
+  a.play().catch(() => {});
+  endScript();
+}
+
+function playVideoThen(d) {
+  const url = src(d.video_asset_id);
+  if (!url) { endScript(); return; }
+  G.phase = 'video';
+  $('dialog-box').style.display = 'none';
+  const v = document.createElement('video');
+  v.id = 'video-player';
+  v.src = url;
+  v.autoplay = true;
+  v.controls = false;
+  v.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:40;';
+  if (d.video_skippable !== false) v.onclick = () => { v.remove(); $('dialog-box').style.display = ''; endScript(); };
+  v.onended = () => { v.remove(); $('dialog-box').style.display = ''; endScript(); };
+  document.body.appendChild(v);
+  G.videoEl = v;
+  v.play().catch(() => { v.remove(); $('dialog-box').style.display = ''; endScript(); });
+}
+
+function stopLoopSfx(stopScriptId) {
+  if (G.loopSfx && G.loopSfx.stopScriptId === stopScriptId) {
+    const a = G.loopSfx.audio;
+    const fadeOut = G.loopSfx.fadeOut || 0;
+    if (fadeOut > 0 && a) {
+      const t0 = performance.now();
+      const step = (t) => {
+        const p = Math.min(1, (t - t0) / (fadeOut * 1000));
+        a.volume = Math.max(0, a.volume - (p * (G.cfg.seVolume || 0)) / 100);
+        if (p < 1) requestAnimationFrame(step);
+        else { a.pause(); a.currentTime = 0; }
+      };
+      requestAnimationFrame(step);
+    } else if (a) { a.pause(); a.currentTime = 0; }
+    G.loopSfx = null;
+  }
+}
+
+function executeActions() {
+  const d = G.script.dialogs[0];
+  (d.actions || []).forEach((fnId) => {
+    const fn = (G.data.functions || []).find((f) => f.id === fnId);
+    if (fn) applyFunction(fn);
+  });
+}
+
+function applyFunction(fn) {
+  applyEffects(fn.effects || []);
+  const msgs = [];
+  if (fn.unlock_cg && !G.unlockedCg.includes(fn.unlock_cg)) {
+    G.unlockedCg.push(fn.unlock_cg); msgs.push('解锁 CG');
+  }
+  if (fn.unlock_script && !G.unlockedScripts.includes(fn.unlock_script)) {
+    G.unlockedScripts.push(fn.unlock_script); msgs.push('解锁隐藏剧情');
+  }
+  if (msgs.length) { persistProgress(); toast(msgs.join('、')); }
 }
 
 /* ------------------------- 选项系统 ------------------------- */
@@ -744,37 +872,32 @@ function renderOptionHighlight() {
 }
 
 function selectOption(i) {
-  const d = G.script.dialogs[G.idx];
+  const d = G.script.dialogs[0];
   const opt = d.options[i];
   if (!opt) return;
   hideOptions();
-  applyEffects(opt.effects);
 
-  const msgs = [];
-  if (opt.unlock_cg && !G.unlockedCg.includes(opt.unlock_cg)) {
-    G.unlockedCg.push(opt.unlock_cg);
-    msgs.push('解锁 CG');
-  }
-  if (opt.unlock_script && !G.unlockedScripts.includes(opt.unlock_script)) {
-    G.unlockedScripts.push(opt.unlock_script);
-    msgs.push('解锁隐藏剧情');
-  }
-  if (msgs.length) { persistProgress(); toast(msgs.join('、')); }
-
-  if (opt.ending_id) { endGame(opt.ending_id); return; }
-  if (opt.jump_to) {
-    const idx = G.script.dialogs.findIndex((x) => x.id === opt.jump_to);
-    if (idx >= 0) { showDialog(idx); return; }
-    // 跨脚本跳转
-    if ((G.data.scripts || []).some((s) => s.id === opt.jump_to)) {
-      playScript(opt.jump_to);
-      return;
+  // v2.1：选项经函数（action_id）执行；旧字段兼容
+  if (opt.action_id) {
+    const fn = (G.data.functions || []).find((f) => f.id === opt.action_id);
+    if (fn) applyFunction(fn);
+  } else {
+    applyEffects(opt.effects);
+    const msgs = [];
+    if (opt.unlock_cg && !G.unlockedCg.includes(opt.unlock_cg)) {
+      G.unlockedCg.push(opt.unlock_cg); msgs.push('解锁 CG');
     }
-  }
-  // 解锁的隐藏剧情：未显式跳转时播放它
-  if (opt.unlock_script && (G.data.scripts || []).some((s) => s.id === opt.unlock_script)) {
-    playScript(opt.unlock_script);
-    return;
+    if (opt.unlock_script && !G.unlockedScripts.includes(opt.unlock_script)) {
+      G.unlockedScripts.push(opt.unlock_script); msgs.push('解锁隐藏剧情');
+    }
+    if (msgs.length) { persistProgress(); toast(msgs.join('、')); }
+    if (opt.ending_id) { endGame(opt.ending_id); return; }
+    if (opt.jump_to) {
+      if ((G.data.scripts || []).some((s) => s.id === opt.jump_to)) { playScript(opt.jump_to); return; }
+    }
+    if (opt.unlock_script && (G.data.scripts || []).some((s) => s.id === opt.unlock_script)) {
+      playScript(opt.unlock_script); return;
+    }
   }
   endScript();
 }
@@ -853,11 +976,31 @@ function showScriptEnd(msg) {
 }
 
 function endScript() {
+  const d = G.script ? G.script.dialogs[0] : null;
+  // 停止需要停的循环音效（进入指定剧情）
+  if (d && (d.sfx || []).length) {
+    (d.sfx || []).forEach((sfx) => {
+      if (sfx.play_mode === 'loop_until' && sfx.stop_script_id) stopLoopSfx(sfx.stop_script_id);
+    });
+  }
   const endingId = evaluateChapterEnding();
   if (endingId) { endGame(endingId); return; }
-  const nextId = nextChapterScript();
+  const nextId = nextScriptInChapter();
   if (nextId) { playScript(nextId); return; }
+  const nextChapId = nextChapterScript();
+  if (nextChapId) { playScript(nextChapId); return; }
   showScriptEnd();
+}
+
+function nextScriptInChapter() {
+  if (!G.script) return null;
+  const chapterId = G.script.chapter_id;
+  const scripts = (G.data.scripts || [])
+    .filter((s) => s.chapter_id === chapterId)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+  const idx = scripts.findIndex((s) => s.id === G.script.id);
+  if (idx >= 0 && idx + 1 < scripts.length) return scripts[idx + 1].id;
+  return null;
 }
 
 function nextChapterScript() {
@@ -949,7 +1092,7 @@ function bindEvents() {
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       if (G.phase === 'options') {
         e.preventDefault();
-        const n = G.script.dialogs[G.idx].options.length;
+        const n = G.script.dialogs[0].options.length;
         G.optionIndex = (G.optionIndex + (e.key === 'ArrowDown' ? 1 : -1) + n) % n;
         renderOptionHighlight();
       }
@@ -962,7 +1105,7 @@ function bindEvents() {
       return;
     }
     if (/^[1-9]$/.test(e.key) && G.phase === 'options') {
-      const opts = G.script.dialogs[G.idx].options;
+      const opts = G.script.dialogs[0].options;
       if (parseInt(e.key, 10) <= opts.length) selectOption(parseInt(e.key, 10) - 1);
       return;
     }

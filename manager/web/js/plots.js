@@ -23,7 +23,6 @@ function galgenDialogForm() {
     },
     get standees() { return this.assets.filter((a) => a.category === 'standee'); },
     get voices() { return this.assets.filter((a) => a.category === 'voice'); },
-    get bgms() { return this.assets.filter((a) => a.category === 'bgm'); },
     get charOptionsHtml() { return _opt(this.chars, (c) => c.name, this.d.character_id, '（旁白）'); },
     get speakerLabelOptionsHtml() {
       const c = this.currentChar;
@@ -44,13 +43,11 @@ function galgenDialogForm() {
     },
     get voiceOptionsHtml() { return _opt(this.voices, (a) => `${a.file_name} (${a.id})`, this.d.voice, '（无）'); },
     get sceneOptionsHtml() { return _opt(this.scenes, (s2) => s2.name, this.d.scene_id, '（无）'); },
-    get bgmOptionsHtml() { return _opt(this.bgms, (a) => `${a.file_name} (${a.id})`, this.d.bgm, '（无）'); },
     commit() { commit(); },
     updateListItem() { App.Pages.plots.updateDialogListItem(); },
     onTypeChange() {
       if (this.d.type === 'choice' && !this.d.options) this.d.options = [];
       commit();
-      App.Pages.plots.updateDialogs();
       App.Pages.plots.renderTabs();
     },
   };
@@ -63,7 +60,6 @@ function galgenOptionEditor() {
   const optIdx = App.cur.optionIdx || 0;
   const realOpt = d ? d.options[optIdx] : null;
   const opt = realOpt ? JSON.parse(JSON.stringify(realOpt)) : null;
-  const chars = App.data.characters || [];
   const _opt = (list, valueKey, labelFn, current, placeholder) => {
     let h = placeholder !== undefined ? `<option value="">${placeholder}</option>` : '';
     for (const it of list) {
@@ -74,48 +70,14 @@ function galgenOptionEditor() {
     }
     return h;
   };
-  const jumpOptions = [];
-  (s.dialogs || []).forEach((x) => {
-    jumpOptions.push({ v: x.id, label: `${x.id} · ${(x.content || '').slice(0, 14)}` });
-  });
-  (App.data.scripts || []).forEach((x) => {
-    if (x.id !== s.id) jumpOptions.push({ v: x.id, label: `【剧情】${x.id}（${(x.dialogs || []).length} 条对话）` });
-  });
+  const functions = App.data.functions || [];
   return {
     opt,
-    chars,
-    endings: App.data.endings || [],
-    cgs: filterByCategory(App.data.assets, 'cg'),
-    scripts: App.data.scripts || [],
-    jumpOptions,
-    get jumpOptionsHtml() { return _opt(this.jumpOptions, 'v', (x) => x.label, this.opt.jump_to, '（剧情结束）'); },
-    get endingOptionsHtml() { return _opt(this.endings, 'id', (e) => `${e.name} (${e.id})`, this.opt.ending_id, '（无）'); },
-    get cgOptionsHtml() { return _opt(this.cgs, 'id', (a) => `${a.file_name} (${a.id})`, this.opt.unlock_cg, '（无）'); },
-    get scriptOptionsHtml() { return _opt(this.scripts, 'id', (x) => x.id, this.opt.unlock_script, '（无）'); },
-    targetOptionsHtml(e) {
-      let h = '<option value="">global（全局）</option>';
-      for (const c of this.chars) {
-        const sel = String(c.id) === String(e.target) ? ' selected' : '';
-        h += `<option value="${esc(c.id)}"${sel}>${esc(c.name)}</option>`;
-      }
-      return h;
-    },
-    opOptionsHtml(e) {
-      const ops = [['add', '＋ 增加'], ['sub', '－ 减少'], ['set', '＝ 设为']];
-      let h = '';
-      for (const [v, label] of ops) {
-        h += `<option value="${v}"${v === e.operation ? ' selected' : ''}>${label}</option>`;
-      }
-      return h;
-    },
-    addEffect() {
-      this.opt.effects.push({ target: '', variable: '', operation: 'add', value: 0 });
-    },
-    removeEffect(i) {
-      this.opt.effects.splice(i, 1);
+    functions,
+    get actionOptionsHtml() {
+      return _opt(this.functions, 'id', (f) => `${f.name} (${f.id})`, this.opt.action_id, '（不指向函数）');
     },
     save() {
-      this.opt.effects = this.opt.effects.filter((e) => e.variable && e.variable.trim());
       Object.assign(realOpt, this.opt);
       commit();
       closeModal();
@@ -130,37 +92,27 @@ App.Pages.plots = {
     if (!App.cur.plotTab) App.cur.plotTab = 'form';
     host.innerHTML = `
     <div class="hsplit">
-      <div class="side" style="width:190px;min-width:190px;">
+      <div class="side" style="width:240px;min-width:240px;">
         <div class="panel" style="display:flex;flex-direction:column;flex:1;min-height:0;">
-          <div class="panel-title">剧情</div>
+          <div class="panel-title">剧情 <span class="sub">${(App.data.scripts || []).length} 条</span></div>
+          <div class="hint" style="margin-bottom:6px;">拖动 ⠿ 排序；勾选多选；Ctrl+点击多选</div>
           <div class="list" id="plots-scripts"></div>
-          <div class="toolbar stretch-btns">
-            <button class="btn btn-primary" id="plot-script-add">新建剧情</button>
-            <button class="btn btn-danger" id="plot-script-del">删除</button>
-          </div>
-          <button class="btn" id="plot-export" style="margin-top:8px;">导出剧情为 txt…</button>
-        </div>
-      </div>
-      <div class="side" style="width:280px;min-width:280px;">
-        <div class="panel" style="display:flex;flex-direction:column;flex:1;min-height:0;">
-          <div class="panel-title">对话</div>
-          <div class="list" id="plots-dialogs"></div>
           <div class="toolbar">
-            <button class="btn btn-primary" id="dlg-add-text">文本</button>
-            <button class="btn btn-primary" id="dlg-add-choice">选项</button>
+            <button class="btn btn-primary" id="plot-script-add">+ 新建</button>
+            <button class="btn btn-danger" id="plot-script-del">删除</button>
           </div>
           <div class="toolbar">
             <button class="btn" id="dlg-copy">复制</button>
             <button class="btn" id="dlg-up">上移</button>
             <button class="btn" id="dlg-down">下移</button>
-            <button class="btn btn-danger" id="dlg-del">删除</button>
           </div>
-          <div class="hint" style="margin-top:4px;">勾选多选，Ctrl+点击也可多选</div>
+          <button class="btn" id="plot-export" style="margin-top:8px;">导出剧情为 txt…</button>
         </div>
       </div>
+      <div class="vsplit-handle"></div>
       <div class="main" style="min-width:0;">
         <div class="tabs" id="plot-tabs">
-          <div class="tab${App.cur.plotTab === 'form' ? ' active' : ''}" data-tab="form">对话设置</div>
+          <div class="tab${App.cur.plotTab === 'form' ? ' active' : ''}" data-tab="form">剧情设置</div>
           <div class="tab${App.cur.plotTab === 'options' ? ' active' : ''}${this.dialog() && this.dialog().type !== 'choice' ? ' disabled' : ''}" data-tab="options">选项编辑</div>
           <div class="tab${App.cur.plotTab === 'tree' ? ' active' : ''}" data-tab="tree">分支树</div>
         </div>
@@ -175,50 +127,112 @@ App.Pages.plots = {
       this.renderTabs();
     });
 
-    host.querySelector('#plot-script-add').addEventListener('click', async () => {
-      await flushCommit();
-      const id = await call('next_id', 'scripts');
-      const script = { id, chapter_id: '', dialogs: [] };
-      const cur = App.data.scripts.findIndex((x) => x.id === App.cur.scriptId);
-      if (cur >= 0) App.data.scripts.splice(cur + 1, 0, script);
-      else App.data.scripts.push(script);
-      App.cur.scriptId = id;
-      App.cur.dialogId = '';
-      commit();
-      this.updateScripts();
-      this.updateDialogs();
-      this.renderTabs();
-    });
-    host.querySelector('#plot-script-del').addEventListener('click', () => {
-      const idx = App.data.scripts.findIndex((x) => x.id === App.cur.scriptId);
-      const s = App.data.scripts[idx];
-      if (!s) return;
-      if (!confirm(`确定删除剧情 ${s.id}？`)) return;
-      App.data.scripts.splice(idx, 1);
-      App.cur.scriptId = App.data.scripts.length ? App.data.scripts[Math.min(idx, App.data.scripts.length - 1)].id : '';
-      App.cur.dialogId = '';
-      commit();
-      this.updateScripts();
-      this.updateDialogs();
-      this.renderTabs();
-    });
+    host.querySelector('#plot-script-add').addEventListener('click', () => this.newItem());
+    host.querySelector('#dlg-copy').addEventListener('click', () => this.copyItem());
+    host.querySelector('#dlg-up').addEventListener('click', () => this.moveItem(-1));
+    host.querySelector('#dlg-down').addEventListener('click', () => this.moveItem(1));
+    host.querySelector('#plot-script-del').addEventListener('click', () => this.deleteSelected());
     host.querySelector('#plot-export').addEventListener('click', async () => {
       await flushCommit();
       const s = this.script();
-      if (!s) { alert('请先选择要导出的剧情。'); return; }
+      if (!s) { toast('请先选择要导出的剧情。'); return; }
       const ok = await call('export_script', s.id);
       if (ok) toast('已导出');
     });
 
-    host.querySelector('#dlg-add-text').addEventListener('click', () => this.addDialog('text'));
-    host.querySelector('#dlg-add-choice').addEventListener('click', () => this.addDialog('choice'));
-    host.querySelector('#dlg-copy').addEventListener('click', () => this.copyDialog());
-    host.querySelector('#dlg-up').addEventListener('click', () => this.moveDialog(-1));
-    host.querySelector('#dlg-down').addEventListener('click', () => this.moveDialog(1));
-    host.querySelector('#dlg-del').addEventListener('click', () => this.deleteSelectedDialogs());
-
     this.updateScripts();
-    this.updateDialogs();
+    this.renderTabs();
+  },
+
+  /* 新建：悬浮选择类型（文本/选项/音效/视频） */
+  newItem() {
+    const host = document.getElementById('page-host');
+    const anchor = host.querySelector('#plot-script-add');
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.id = 'type-menu';
+    menu.style.cssText = `position:absolute;top:${rect.bottom + 4}px;left:${rect.left}px;z-index:200;`;
+    menu.innerHTML = `
+      <div class="type-menu">
+        <div class="type-menu-title">选择新建剧情类型</div>
+        ${[['text', '文本'], ['choice', '选项'], ['sfx', '音效'], ['video', '视频']].map(([t, label]) => `
+          <button class="btn type-menu-item" data-type="${t}">${label}</button>`).join('')}
+      </div>`;
+    host.appendChild(menu);
+    const close = () => menu.remove();
+    host.querySelectorAll('.type-menu-item').forEach((btn) => {
+      btn.addEventListener('click', () => { close(); this.addUnit(btn.dataset.type); });
+    });
+    setTimeout(() => document.addEventListener('click', function(e) {
+      if (!menu.contains(e.target) && e.target !== anchor) close();
+    }), 0);
+  },
+
+  async addUnit(type) {
+    await flushCommit();
+    const id = await call('next_id', 'scripts');
+    const chapter = this.script() ? this.script().chapter_id : (App.data.chapters[0]?.id || '');
+    const d = { id: `${id}_d`, type, character_id: '', speaker_label: '', standee: '', expression: '', voice: '', scene_id: '', content: '', options: [], actions: [], sfx: [], video_asset_id: '', video_skippable: true };
+    if (type !== 'choice') delete d.options;
+    if (type !== 'text' && type !== 'choice') { d.character_id = ''; d.content = ''; }
+    const script = { id, chapter_id: chapter, order: this.nextOrder(), dialogs: [d] };
+    const cur = App.data.scripts.findIndex((x) => x.id === App.cur.scriptId);
+    if (cur >= 0) App.data.scripts.splice(cur + 1, 0, script);
+    else App.data.scripts.push(script);
+    App.cur.scriptId = id;
+    App.cur.dialogId = d.id;
+    App.cur.plotTab = 'form';
+    commit();
+    this.updateScripts();
+    this.renderTabs();
+  },
+
+  nextOrder() {
+    const max = App.data.scripts.reduce((m, s) => Math.max(m, s.order || 0), 0);
+    return max + 1;
+  },
+
+  copyItem() {
+    const s = this.script();
+    if (!s) return;
+    const copy = JSON.parse(JSON.stringify(s));
+    copy.id = copy.id + '_copy_' + String(Date.now()).slice(-4);
+    copy.order = this.nextOrder();
+    if (copy.dialogs[0]) copy.dialogs[0].id = `${copy.id}_d`;
+    const cur = App.data.scripts.findIndex((x) => x.id === App.cur.scriptId);
+    App.data.scripts.splice(cur + 1, 0, copy);
+    App.cur.scriptId = copy.id;
+    App.cur.dialogId = copy.dialogs[0] ? copy.dialogs[0].id : '';
+    commit();
+    this.updateScripts();
+    this.renderTabs();
+  },
+
+  moveItem(delta) {
+    const idx = App.data.scripts.findIndex((x) => x.id === App.cur.scriptId);
+    const j = idx + delta;
+    if (idx < 0 || j < 0 || j >= App.data.scripts.length) return;
+    const arr = App.data.scripts;
+    [arr[idx], arr[j]] = [arr[j], arr[idx]];
+    arr.forEach((s, i) => { s.order = i; });
+    commit();
+    this.updateScripts();
+  },
+
+  deleteSelected() {
+    const selSet = App.cur.scriptSel || new Set();
+    let targets = [...selSet];
+    if (!targets.length && App.cur.scriptId) targets = [App.cur.scriptId];
+    if (!targets.length) { toast('请先勾选要删除的剧情'); return; }
+    if (!confirm(`确定删除所选 ${targets.length} 条剧情？`)) return;
+    App.data.scripts = App.data.scripts.filter((s) => !targets.includes(s.id));
+    App.cur.scriptSel = new Set();
+    const idx = App.data.scripts.findIndex((s) => s.id === App.cur.scriptId);
+    App.cur.scriptId = App.data.scripts.length ? App.data.scripts[Math.min(Math.max(idx, 0), App.data.scripts.length - 1)].id : '';
+    App.cur.dialogId = '';
+    commit();
+    this.updateScripts();
     this.renderTabs();
   },
 
@@ -228,7 +242,7 @@ App.Pages.plots = {
 
   dialog() {
     const s = this.script();
-    return s ? s.dialogs.find((d) => d.id === App.cur.dialogId) || null : null;
+    return s && s.dialogs && s.dialogs[0] ? s.dialogs[0] : null;
   },
 
   nextDialogId() {
@@ -246,97 +260,78 @@ App.Pages.plots = {
 
   /* ---------- 列表渲染 ---------- */
 
+  typeLabel(t) {
+    return ({ text: '文本', choice: '选项', sfx: '音效', video: '视频' })[t] || t;
+  },
+
   updateScripts() {
     const el = document.getElementById('plots-scripts');
     if (!el) return;
-    el.innerHTML = (App.data.scripts || []).map((s) => `
-      <div class="list-item${s.id === App.cur.scriptId ? ' active' : ''}" data-id="${esc(s.id)}">
-        ${esc(s.id)}<span class="sub">${(s.dialogs || []).length} 条对话</span>
-      </div>`).join('') || '<div class="empty">暂无剧情</div>';
-    el.querySelectorAll('.list-item').forEach((it) => {
-      it.addEventListener('click', () => {
-        App.cur.scriptId = it.dataset.id;
-        App.cur.dialogId = '';
-        App.cur.dlgSel = new Set();
-        this.updateScripts();
-        this.updateDialogs();
-        this.renderTabs();
-      });
-    });
-  },
-
-  updateDialogs() {
-    const el = document.getElementById('plots-dialogs');
-    if (!el) return;
-    const s = this.script();
-    if (!s) { el.innerHTML = '<div class="empty">选择或新建剧情</div>'; return; }
-    const selSet = App.cur.dlgSel || new Set();
-    el.innerHTML = s.dialogs.map((d) => `
-      <div class="list-item${d.id === App.cur.dialogId ? ' active' : ''}${selSet.has(d.id) ? ' multi-selected' : ''}" data-id="${esc(d.id)}">
-        <input type="checkbox" class="multi-check" data-id="${esc(d.id)}"${selSet.has(d.id) ? ' checked' : ''} title="多选">
+    const selSet = App.cur.scriptSel || new Set();
+    const items = [...(App.data.scripts || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+    el.innerHTML = items.map((s) => {
+      const d = s.dialogs && s.dialogs[0];
+      const preview = d ? (d.speaker_label ? `${d.speaker_label}：` : '') + (d.content || (d.type === 'sfx' ? '音效' : d.type === 'video' ? '视频' : '')).slice(0, 20) : '空';
+      return `
+      <div class="list-item${s.id === App.cur.scriptId ? ' active' : ''}${selSet.has(s.id) ? ' multi-selected' : ''}" data-id="${esc(s.id)}">
+        <input type="checkbox" class="multi-check" data-id="${esc(s.id)}"${selSet.has(s.id) ? ' checked' : ''} title="多选">
         <span class="drag-handle" title="拖动排序">⠿</span>
-        ${d.type === 'choice' ? '【选项】' : '【文本】'} ${esc(d.id)}<span class="sub">${d.speaker_label ? esc(d.speaker_label) + '：' : ''}${esc((d.content || '').slice(0, 18))}</span>
-      </div>`).join('') || '<div class="empty">暂无对话</div>';
+        <span class="tag type-${esc(d ? d.type : '')}">${esc(this.typeLabel(d ? d.type : ''))}</span>
+        <span class="sub">${esc(preview)}</span>
+      </div>`;
+    }).join('') || '<div class="empty">暂无剧情</div>';
     el.querySelectorAll('.list-item').forEach((it) => {
       it.addEventListener('click', (e) => {
         if (e.target.closest('.multi-check')) return;
         if (e.ctrlKey || e.metaKey) {
-          const cb = it.querySelector('.multi-check');
-          cb.checked = !cb.checked;
-          if (cb.checked) selSet.add(it.dataset.id); else selSet.delete(it.dataset.id);
-          this.updateDialogs();
+          const sel = App.cur.scriptSel || new Set();
+          if (sel.has(it.dataset.id)) sel.delete(it.dataset.id); else sel.add(it.dataset.id);
+          App.cur.scriptSel = sel;
+          this.updateScripts();
           return;
         }
-        App.cur.dialogId = it.dataset.id;
-        this.updateDialogs();
+        App.cur.scriptId = it.dataset.id;
+        const s = App.data.scripts.find((x) => x.id === it.dataset.id);
+        App.cur.dialogId = s && s.dialogs[0] ? s.dialogs[0].id : '';
+        this.updateScripts();
         this.renderTabs();
       });
     });
     el.querySelectorAll('.multi-check').forEach((cb) => {
       cb.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (cb.checked) selSet.add(cb.dataset.id); else selSet.delete(cb.dataset.id);
-        this.updateDialogs();
+        const sel = App.cur.scriptSel || new Set();
+        if (cb.checked) sel.add(cb.dataset.id); else sel.delete(cb.dataset.id);
+        App.cur.scriptSel = sel;
+        this.updateScripts();
       });
     });
-    this.bindDialogSort();
+    this.bindScriptSort();
   },
 
-  deleteSelectedDialogs() {
-    const s = this.script();
-    if (!s) return;
-    const selSet = App.cur.dlgSel || new Set();
-    if (!selSet.size && App.cur.dialogId) selSet.add(App.cur.dialogId);
-    if (!selSet.size) { toast('请先勾选要删除的对话'); return; }
-    if (!confirm(`确定删除所选 ${selSet.size} 条对话？`)) return;
-    s.dialogs = s.dialogs.filter((d) => !selSet.has(d.id));
-    selSet.clear();
-    App.cur.dialogId = s.dialogs.length ? s.dialogs[0].id : '';
-    commit();
-    this.updateDialogs();
-    this.renderTabs();
-  },
-
-  bindDialogSort() {
-    const el = document.getElementById('plots-dialogs');
+  bindScriptSort() {
+    const el = document.getElementById('plots-scripts');
     if (!el) return;
-    if (this._dlgSort) {
-      if (this._dlgSort.el === el) return;
-      this._dlgSort.destroy();
-      this._dlgSort = null;
+    if (this._scriptSort) {
+      if (this._scriptSort.el === el) return;
+      this._scriptSort.destroy();
+      this._scriptSort = null;
     }
-    this._dlgSort = Sortable.create(el, {
+    this._scriptSort = Sortable.create(el, {
       handle: '.drag-handle',
       animation: 150,
       ghostClass: 'sortable-ghost',
+      scroll: true,
+      scrollSensitivity: 40,
+      scrollSpeed: 20,
+      bubbleScroll: true,
       onEnd: () => {
-        const s = this.script();
-        if (!s) return;
         const order = Array.from(el.querySelectorAll('.list-item')).map((it) => it.dataset.id);
         const byId = {};
-        s.dialogs.forEach((d) => { byId[d.id] = d; });
-        s.dialogs = order.map((id) => byId[id]).filter(Boolean);
+        App.data.scripts.forEach((s) => { byId[s.id] = s; });
+        App.data.scripts = order.map((id, i) => { const s = byId[id]; if (s) s.order = i; return s; }).filter(Boolean);
         commit();
+        this.updateScripts();
       },
     });
   },
@@ -359,13 +354,17 @@ App.Pages.plots = {
 
   renderFormTab(content) {
     const d = this.dialog();
-    if (!d) { content.innerHTML = '<div class="empty">选择或新建一条对话</div>'; return; }
+    if (!d) { content.innerHTML = '<div class="empty">选择或新建一条剧情</div>'; return; }
+    if (d.type === 'sfx') { this.renderSfxForm(content); return; }
+    if (d.type === 'video') { this.renderVideoForm(content); return; }
     content.innerHTML = `
       <div x-data="galgenDialogForm()" class="field-grid">
         <label class="field"><span>类型</span>
           <select x-model="d.type" @change="onTypeChange()">
             <option value="text">文本</option>
             <option value="choice">选项</option>
+            <option value="sfx">音效</option>
+            <option value="video">视频</option>
           </select>
         </label>
         <label class="field"><span>ID</span><input class="input-lg" readonly x-model="d.id"></label>
@@ -386,13 +385,175 @@ App.Pages.plots = {
         <label class="field"><span>场景</span>
           <select x-model="d.scene_id" @change="commit()" x-html="sceneOptionsHtml"></select>
         </label>
-        <label class="field"><span>背景音乐</span>
-          <select x-model="d.bgm" @change="commit()" x-html="bgmOptionsHtml"></select>
-        </label>
+        <div class="field field-full"><span>功能（引用函数，可多个；函数在「函数」页管理）</span><div id="pf-actions"></div></div>
         <label class="field field-full"><span>对话内容（选项类型时此处为问题文本）</span>
           <textarea x-model="d.content" @input.debounce.500ms="commit(); updateListItem()"></textarea>
         </label>
       </div>`;
+    this.bindActionsEditor(content, d);
+  },
+
+  /* 功能引用列表编辑器 */
+  bindActionsEditor(container, d) {
+    const box = container.querySelector('#pf-actions');
+    if (!box) return;
+    const fns = App.data.functions || [];
+    const render = () => {
+      box.innerHTML = '';
+      (d.actions || []).forEach((fnId, i) => {
+        const fn = fns.find((f) => f.id === fnId);
+        const row = document.createElement('div');
+        row.className = 'kv-row';
+        const sel = document.createElement('select');
+        sel.className = 'kv-val';
+        sel.innerHTML = optionsHtml(fns, 'id', (f) => `${f.name} (${f.id})`, fnId, '（选择函数）');
+        sel.addEventListener('change', () => { d.actions[i] = sel.value; commit(); });
+        const del = document.createElement('button');
+        del.className = 'btn btn-sm btn-danger kv-del';
+        del.textContent = '×';
+        del.addEventListener('click', () => { d.actions.splice(i, 1); commit(); render(); });
+        row.appendChild(sel);
+        row.appendChild(del);
+        box.appendChild(row);
+      });
+      if (!d.actions || !d.actions.length) box.innerHTML = '<div class="hint">未引用函数</div>';
+      const add = document.createElement('button');
+      add.className = 'btn kv-add';
+      add.textContent = '+ 添加功能';
+      add.addEventListener('click', () => {
+        if (!fns.length) { toast('请先在「函数」页创建函数'); return; }
+        d.actions = d.actions || [];
+        d.actions.push(fns[0].id);
+        commit();
+        render();
+      });
+      box.appendChild(add);
+    };
+    render();
+  },
+
+  renderSfxForm(content) {
+    const d = this.dialog();
+    content.innerHTML = `
+      <div x-data="galgenDialogForm()" class="field-grid">
+        <label class="field"><span>类型</span>
+          <select x-model="d.type" @change="onTypeChange()">
+            <option value="text">文本</option>
+            <option value="choice">选项</option>
+            <option value="sfx">音效</option>
+            <option value="video">视频</option>
+          </select>
+        </label>
+        <label class="field"><span>ID</span><input class="input-lg" readonly x-model="d.id"></label>
+        <label class="field"><span>场景</span>
+          <select x-model="d.scene_id" @change="commit()" x-html="sceneOptionsHtml"></select>
+        </label>
+        <div class="field field-full"><span>音效（纯音频；播放后按播放方式推进）</span><div id="sfx-list"></div></div>
+      </div>`;
+    this.bindSfxEditor(content, d);
+  },
+
+  bindSfxEditor(container, d) {
+    const box = container.querySelector('#sfx-list');
+    if (!box) return;
+    const audioAssets = filterByCategory(App.data.assets, 'se');
+    const render = () => {
+      box.innerHTML = '';
+      (d.sfx || []).forEach((sfx, i) => {
+        const row = document.createElement('div');
+        row.className = 'sfx-item';
+        row.innerHTML = `
+          <div class="kv-row">
+            <select class="sfx-mode">
+              <option value="play"${sfx.play_mode === 'play' ? ' selected' : ''}>播放（立即下一条）</option>
+              <option value="play_and_wait"${sfx.play_mode === 'play_and_wait' ? ' selected' : ''}>播放并等待</option>
+              <option value="loop_until"${sfx.play_mode === 'loop_until' ? ' selected' : ''}>循环直到指定剧情</option>
+            </select>
+            <select class="sfx-asset">${optionsHtml(audioAssets, 'id', (a) => `${a.file_name} (${a.id})`, sfx.asset_id, '（选择音效资产）')}</select>
+            <button class="btn btn-sm btn-danger kv-del">×</button>
+          </div>
+          <div class="kv-row">
+            <input class="sfx-fade-in" type="number" min="0" step="0.1" value="${sfx.fade_in ?? 0}" placeholder="淡入(秒)">
+            <input class="sfx-fade-out" type="number" min="0" step="0.1" value="${sfx.fade_out ?? 0}" placeholder="淡出(秒)">
+            <input class="sfx-rate" type="number" min="0.25" step="0.1" value="${sfx.rate ?? 1}" placeholder="倍速">
+            <label class="sfx-exclusive" style="display:flex;align-items:center;gap:4px;white-space:nowrap;">
+              <input type="checkbox" class="sfx-excl" ${sfx.exclusive === false ? '' : 'checked'}> 互斥
+            </label>
+          </div>
+          <div class="kv-row" style="${sfx.play_mode === 'loop_until' ? '' : 'display:none'}">
+            <select class="sfx-stop">${optionsHtml(App.data.scripts, 'id', (s) => `${s.id}`, sfx.stop_script_id, '（选择停止剧情）')}</select>
+          </div>`;
+        const mode = row.querySelector('.sfx-mode');
+        const stopRow = row.querySelectorAll('.kv-row')[2];
+        mode.addEventListener('change', () => {
+          sfx.play_mode = mode.value;
+          stopRow.style.display = mode.value === 'loop_until' ? '' : 'none';
+          commit();
+        });
+        row.querySelector('.sfx-asset').addEventListener('change', (e) => { sfx.asset_id = e.target.value; commit(); });
+        row.querySelector('.sfx-fade-in').addEventListener('input', (e) => { sfx.fade_in = parseFloat(e.target.value) || 0; commit(); });
+        row.querySelector('.sfx-fade-out').addEventListener('input', (e) => { sfx.fade_out = parseFloat(e.target.value) || 0; commit(); });
+        row.querySelector('.sfx-rate').addEventListener('input', (e) => { sfx.rate = parseFloat(e.target.value) || 1; commit(); });
+        row.querySelector('.sfx-excl').addEventListener('change', (e) => { sfx.exclusive = e.target.checked; commit(); });
+        row.querySelector('.sfx-stop').addEventListener('change', (e) => { sfx.stop_script_id = e.target.value; commit(); });
+        row.querySelector('.kv-del').addEventListener('click', () => { d.sfx.splice(i, 1); commit(); render(); });
+        box.appendChild(row);
+      });
+      const add = document.createElement('button');
+      add.className = 'btn kv-add';
+      add.textContent = '+ 添加音效';
+      add.addEventListener('click', () => {
+        d.sfx = d.sfx || [];
+        d.sfx.push({ id: `sfx_${Date.now()}`, play_mode: 'play', asset_id: '', fade_in: 0, fade_out: 0, rate: 1, exclusive: true, stop_script_id: '' });
+        commit();
+        render();
+      });
+      box.appendChild(add);
+    };
+    render();
+  },
+
+  renderVideoForm(content) {
+    const d = this.dialog();
+    const videos = filterByCategory(App.data.assets, 'video');
+    content.innerHTML = `
+      <div x-data="galgenDialogForm()" class="field-grid">
+        <label class="field"><span>类型</span>
+          <select x-model="d.type" @change="onTypeChange()">
+            <option value="text">文本</option>
+            <option value="choice">选项</option>
+            <option value="sfx">音效</option>
+            <option value="video">视频</option>
+          </select>
+        </label>
+        <label class="field"><span>ID</span><input class="input-lg" readonly x-model="d.id"></label>
+        <label class="field"><span>场景</span>
+          <select x-model="d.scene_id" @change="commit()" x-html="sceneOptionsHtml"></select>
+        </label>
+        <label class="field field-full"><span>视频（沉浸播放，隐藏对话区；播完自动下一条）</span>
+          <div class="toolbar" style="margin-top:4px;">
+            <select id="pf-video" class="kv-val">${optionsHtml(videos, 'id', (a) => `${a.file_name} (${a.id})`, d.video_asset_id, '（选择视频资产）')}</select>
+            <button class="btn btn-sm" id="pf-video-upload">上传视频</button>
+          </div>
+        </label>
+        <label class="field" style="display:flex;align-items:center;gap:10px;">
+          <input type="checkbox" id="pf-video-skip" ${d.video_skippable === false ? '' : 'checked'} style="width:auto;transform:scale(1.2);">
+          <span style="margin:0;">可点击跳过（默认勾选）</span>
+        </label>
+      </div>`;
+    content.querySelector('#pf-video').addEventListener('change', (e) => { d.video_asset_id = e.target.value; commit(); });
+    content.querySelector('#pf-video-skip').addEventListener('change', (e) => { d.video_skippable = e.target.checked; commit(); });
+    content.querySelector('#pf-video-upload').addEventListener('click', async () => {
+      await flushCommit();
+      const asset = await call('upload_asset', 'video');
+      if (!asset || asset.error) { if (asset && asset.error) toast(asset.error); return; }
+      App.data.assets.push(asset);
+      d.video_asset_id = asset.id;
+      commit();
+      const payload = await call('get_data');
+      if (payload) { App.filePath = payload.file_path || App.filePath; }
+      this.renderVideoForm(content);
+    });
   },
 
   renderOptionsTab(content) {
@@ -400,37 +561,33 @@ App.Pages.plots = {
     if (!d) { content.innerHTML = '<div class="empty">选择一条对话</div>'; return; }
     if (d.type !== 'choice') { content.innerHTML = '<div class="empty">该对话为文本类型，无选项。</div>'; return; }
     const options = d.options || [];
+    const fns = App.data.functions || [];
     content.innerHTML = `
       <table class="data sortable-table">
-        <thead><tr><th style="width:28px"></th><th style="width:120px">ID</th><th>内容</th><th>跳转</th><th>结局</th><th>解锁</th><th></th></tr></thead>
+        <thead><tr><th style="width:28px"></th><th style="width:120px">ID</th><th>内容</th><th>指向函数</th><th></th></tr></thead>
         <tbody id="opt-tbody">
           ${options.map((o, i) => {
-            const unlocks = [];
-            if ((o.effects || []).length) unlocks.push(`${o.effects.length} 项效果`);
-            if (o.unlock_cg) unlocks.push('CG');
-            if (o.unlock_script) unlocks.push('剧情');
+            const fn = o.action_id ? fns.find((f) => f.id === o.action_id) : null;
             return `<tr data-idx="${i}">
               <td class="drag-handle" title="拖动排序">⠿</td>
               <td><span class="table-id">${esc(o.id)}</span></td>
               <td class="opt-content">${esc(o.content) || '<span class="placeholder">（空选项）</span>'}</td>
-              <td>${esc(o.jump_to || '—')}</td>
-              <td>${esc(o.ending_id || '—')}</td>
-              <td>${esc(unlocks.join('、') || '—')}</td>
+              <td>${fn ? esc(fn.name) : '—'}</td>
               <td><button class="btn btn-sm opt-edit">编辑</button></td>
             </tr>`;
-          }).join('') || '<tr><td colspan="7" class="empty">暂无选项</td></tr>'}
+          }).join('') || '<tr><td colspan="5" class="empty">暂无选项</td></tr>'}
         </tbody>
       </table>
       <div class="toolbar">
         <button class="btn btn-primary" id="opt-add">+ 新增选项</button>
         <button class="btn btn-danger" id="opt-del">删除所选</button>
       </div>
-      <div class="hint" style="margin-top:6px;">拖动 ⠿ 可调整选项顺序。</div>`;
+      <div class="hint" style="margin-top:6px;">拖动 ⠿ 可调整选项顺序；选项行为通过「指向函数」配置。</div>`;
     content.querySelectorAll('.opt-edit').forEach((btn) => {
       btn.addEventListener('click', () => this.openOptionEditor(+btn.closest('tr').dataset.idx));
     });
     content.querySelector('#opt-add').addEventListener('click', () => {
-      d.options.push({ id: this.nextOptionId(d), content: '', jump_to: '', effects: [], unlock_cg: '', unlock_script: '', ending_id: '' });
+      d.options.push({ id: this.nextOptionId(d), content: '', action_id: '' });
       commit();
       this.renderTabs();
       this.openOptionEditor(d.options.length - 1);
@@ -485,37 +642,10 @@ App.Pages.plots = {
         <h3>编辑选项</h3>
         <label class="field"><span>ID</span><input class="input-lg" readonly x-model="opt.id"></label>
         <label class="field"><span>选项内容</span><input x-model="opt.content"></label>
-        <div class="field-grid">
-          <label class="field"><span>跳转目标（对话或剧情）</span>
-            <select x-model="opt.jump_to" x-html="jumpOptionsHtml"></select>
-          </label>
-          <label class="field"><span>指向结局</span>
-            <select x-model="opt.ending_id" x-html="endingOptionsHtml"></select>
-          </label>
-          <label class="field"><span>解锁 CG</span>
-            <select x-model="opt.unlock_cg" x-html="cgOptionsHtml"></select>
-          </label>
-          <label class="field"><span>解锁隐藏剧情</span>
-            <select x-model="opt.unlock_script" x-html="scriptOptionsHtml"></select>
-          </label>
-        </div>
-        <label class="field"><span>变量修改效果</span>
-          <div>
-            <template x-for="(e, i) in opt.effects" :key="i">
-              <div class="kv-row effect-row">
-                <select class="ef-target" x-model="e.target" x-html="targetOptionsHtml(e)" style="flex:1;"></select>
-                <input class="ef-var" x-model="e.variable" placeholder="变量名" style="flex:1;">
-                <select class="ef-op" x-model="e.operation" x-html="opOptionsHtml(e)" style="flex:1;"></select>
-                <input type="number" class="ef-val" x-model.number="e.value" style="flex:1;">
-                <button class="btn btn-sm btn-danger ef-del" @click="removeEffect(i)">×</button>
-              </div>
-            </template>
-            <div x-show="!opt.effects.length" class="empty" style="padding:8px;">暂无效果</div>
-          </div>
+        <label class="field"><span>指向函数（动作在「函数」页编辑）</span>
+          <select x-model="opt.action_id" x-html="actionOptionsHtml"></select>
+          <span class="hint" style="margin-top:2px;display:block;">函数可包含跳转/解锁/修改变量等动作；不选则无效果（本选项仅作文本）。</span>
         </label>
-        <div class="toolbar">
-          <button class="btn btn-sm" @click="addEffect()">+ 新增效果</button>
-        </div>
         <div class="divider"></div>
         <div class="toolbar" style="justify-content:flex-end;">
           <button class="btn" @click="cancel()">取消</button>
@@ -577,82 +707,24 @@ App.Pages.plots = {
             return;
           }
         }
-        // 点击节点 → 定位到对话列表并切到表单
-        App.cur.dialogId = dialogId;
+        // 点击节点 → 定位到该剧情并切到表单
+        App.cur.scriptId = dialogId;
+        App.cur.dialogId = this.script() && this.script().dialogs[0] ? this.script().dialogs[0].id : '';
         App.cur.plotTab = 'form';
-        this.updateDialogs();
+        this.updateScripts();
         this.renderTabs();
       });
     });
   },
 
-  /* ---------- 对话操作 ---------- */
-
-  addDialog(type) {
-    const s = this.script();
-    if (!s) { alert('请先新建或选择一个剧情。'); return; }
-    const d = { id: this.nextDialogId(), type, character_id: '', speaker_label: '', standee: '', expression: '', voice: '', scene_id: '', bgm: '', content: '', options: type === 'choice' ? [] : undefined };
-    if (type !== 'choice') delete d.options;
-    const cur = s.dialogs.findIndex((x) => x.id === App.cur.dialogId);
-    if (cur >= 0) s.dialogs.splice(cur + 1, 0, d);
-    else s.dialogs.push(d);
-    App.cur.dialogId = d.id;
-    commit();
-    this.updateDialogs();
-    this.renderTabs();
-  },
-
-  copyDialog() {
-    const d = this.dialog();
-    const s = this.script();
-    if (!d || !s) return;
-    const copy = JSON.parse(JSON.stringify(d));
-    copy.id = this.nextDialogId();
-    if (copy.type === 'choice') {
-      (copy.options || []).forEach((o, i) => { o.id = `${copy.id}_opt_${String(i + 1).padStart(4, '0')}`; });
-    }
-    s.dialogs.splice(s.dialogs.indexOf(d) + 1, 0, copy);
-    App.cur.dialogId = copy.id;
-    commit();
-    this.updateDialogs();
-    this.renderTabs();
-  },
-
-  moveDialog(delta) {
-    const d = this.dialog();
-    const s = this.script();
-    if (!d || !s) return;
-    const i = s.dialogs.indexOf(d);
-    const j = i + delta;
-    if (j < 0 || j >= s.dialogs.length) return;
-    [s.dialogs[i], s.dialogs[j]] = [s.dialogs[j], s.dialogs[i]];
-    commit();
-    this.updateDialogs();
-  },
-
-  deleteDialog() {
-    const s = this.script();
-    if (!s) return;
-    const idx = s.dialogs.findIndex((x) => x.id === App.cur.dialogId);
-    const d = s.dialogs[idx];
-    if (!d) return;
-    if (!confirm(`确定删除对话 ${d.id}？`)) return;
-    s.dialogs.splice(idx, 1);
-    App.cur.dialogId = s.dialogs.length ? s.dialogs[Math.min(idx, s.dialogs.length - 1)].id : '';
-    commit();
-    this.updateDialogs();
-    this.renderTabs();
-  },
-
   updateDialogListItem() {
     const d = this.dialog();
-    const el = document.getElementById('plots-dialogs');
+    const el = document.getElementById('plots-scripts');
     if (!d || !el) return;
-    const it = el.querySelector(`.list-item[data-id="${CSS.escape(d.id)}"]`);
+    const it = el.querySelector(`.list-item[data-id="${CSS.escape(App.cur.scriptId)}"]`);
     if (it) {
       const sub = it.querySelector('.sub');
-      it.childNodes[0].nodeValue = `${d.type === 'choice' ? '【选项】' : '【文本】'} ${d.id} `;
-      if (sub) sub.textContent = (d.speaker_label ? `${d.speaker_label}：` : '') + (d.content || '').slice(0, 18);
+      if (sub) sub.textContent = (d.speaker_label ? `${d.speaker_label}：` : '') + (d.content || '').slice(0, 20);
     }
   },
 };

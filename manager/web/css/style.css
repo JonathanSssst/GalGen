@@ -255,18 +255,12 @@ input.input-lg {
   gap: 4px;
 }
 .ver-input {
-  width: 52px;
-  text-align: center;
+  width: 56px;
 }
 .ver-dot {
   font-weight: 700;
   color: var(--text-muted);
   margin: 0 2px;
-}
-.ver-minus, .ver-plus {
-  min-width: 22px;
-  padding: 2px 5px;
-  line-height: 1;
 }
 .field-grid-inner {
   display: flex;
@@ -304,6 +298,76 @@ input.input-lg {
 /* 项目简介风格列表项（统一列表样式） */
 .desc-textarea {
   resize: vertical;
+}
+
+/* ==================== 新建类型悬浮菜单 ==================== */
+.type-menu {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(16, 24, 40, 0.15);
+  padding: 10px;
+  min-width: 140px;
+}
+.type-menu-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+.type-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 4px;
+}
+.type-menu-item:last-child { margin-bottom: 0; }
+
+/* 剧情列表类型标签 */
+.tag.type-text { background: #e8f1fd; color: #1e63c5; }
+.tag.type-choice { background: #fff6e8; color: #d9822b; }
+.tag.type-sfx { background: #eef7ee; color: #2f9e44; }
+.tag.type-video { background: #f3eefe; color: #7d5bd0; }
+
+/* 顶部悬浮提示 */
+#top-toast {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-60px);
+  background: #14171e;
+  color: #fff;
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-size: 13px;
+  z-index: 999;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  pointer-events: none;
+}
+#top-toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+/* 顶部按钮图标 */
+.btn-icon {
+  width: 34px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-icon svg { display: block; }
+
+/* 设置页字体下拉框固定样式 */
+.set-font-select {
+  width: 100%;
+  max-width: 340px;
+  height: 34px;
+  font-size: 13px;
 }
 
 .vsplit { display: flex; flex-direction: column; gap: 18px; height: 100%; }

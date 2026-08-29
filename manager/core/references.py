@@ -35,12 +35,18 @@ def analyze_asset_references(project: GalGenProject) -> Dict[str, List[dict]]:
 
     for sc in project.scripts:
         for d in sc.dialogs:
-            loc = f"scripts/{sc.id or '?'}/{d.id or '?'}"
+            loc = f"scripts/{sc.id or '?'}"
             add(d.standee, loc, "standee")
             add(d.voice, loc, "voice")
-            add(d.bgm, loc, "bgm")
+            add(d.video_asset_id, loc, "video")
+            for sfx in d.sfx:
+                add(sfx.asset_id, loc, "音效")
             for o in d.options:
                 add(o.unlock_cg, loc, "选项解锁CG")
+
+    for fn in project.functions:
+        loc = f"functions/{fn.id or '?'}"
+        add(fn.unlock_cg, loc, "解锁CG")
 
     for e in project.endings:
         add(e.cg, f"endings/{e.id or '?'}", "cg")

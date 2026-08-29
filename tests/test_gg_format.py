@@ -25,19 +25,15 @@ class TestGalGenProject(unittest.TestCase):
         p.project = ProjectInfo(name="测试项目", author="作者", version="1.2.3")
         p.characters = [Character(id="char_0001", name="林晓", variables={"affection": 0})]
         p.scripts = [
-            Script(
-                id="script_0001",
-                chapter_id="",
-                dialogs=[
-                    Dialog(id="dlg_0001", type="text", content="你好"),
-                    Dialog(
-                        id="dlg_0002",
-                        type="choice",
-                        content="选择",
-                        options=[Option(id="opt_0001", content="去", effects=[], jump_to="dlg_0001")],
-                    ),
-                ],
-            )
+            Script(id="script_0001", chapter_id="", dialogs=[Dialog(id="dlg_0001", type="text", content="你好")]),
+            Script(id="script_0002", chapter_id="", dialogs=[
+                Dialog(
+                    id="dlg_0002",
+                    type="choice",
+                    content="选择",
+                    options=[Option(id="opt_0001", content="去", effects=[], jump_to="script_0001")],
+                ),
+            ]),
         ]
 
         with tempfile.TemporaryDirectory() as td:
@@ -53,7 +49,7 @@ class TestGalGenProject(unittest.TestCase):
             self.assertEqual(loaded.project.name, "测试项目")
             self.assertEqual(loaded.characters[0].id, "char_0001")
             self.assertEqual(loaded.characters[0].variables["affection"], 0)
-            self.assertEqual(loaded.scripts[0].dialogs[1].options[0].content, "去")
+            self.assertEqual(loaded.scripts[1].dialogs[0].options[0].content, "去")
             self.assertEqual(loaded.file_path, str(path))
 
     def test_save_appends_gg_suffix(self):

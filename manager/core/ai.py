@@ -38,7 +38,7 @@ _voices_cache: Optional[List[dict]] = None
 
 
 def list_voices(force: bool = False) -> List[dict]:
-    """返回可用声线列表（优先尝试从 edge-tts 拉取完整列表，失败回退内置清单）。"""
+    """返回可用声线列表（仅中英文音色；优先尝试 edge-tts，失败回退内置清单）。"""
     global _voices_cache
     if _voices_cache is not None and not force:
         return _voices_cache
@@ -51,6 +51,9 @@ def list_voices(force: bool = False) -> List[dict]:
         for v in voices:
             short = v.get("ShortName", "")
             if not short or short in seen:
+                continue
+            # 仅保留中文与英文音色
+            if not (short.startswith("zh-") or short.startswith("en-")):
                 continue
             seen.add(short)
             gender = v.get("Gender", "")

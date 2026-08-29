@@ -26,6 +26,17 @@ function toast(msg, ms = 2500) {
   st.textContent = msg;
   clearTimeout(toast._t);
   toast._t = setTimeout(() => { st.textContent = ''; }, ms);
+  // 顶部悬浮提示
+  let float = document.getElementById('top-toast');
+  if (!float) {
+    float = document.createElement('div');
+    float.id = 'top-toast';
+    document.body.appendChild(float);
+  }
+  float.textContent = msg;
+  float.classList.add('show');
+  clearTimeout(toast._f);
+  toast._f = setTimeout(() => float.classList.remove('show'), ms);
 }
 
 async function call(name, ...args) {
@@ -58,6 +69,23 @@ function optionsHtml(items, valueKey, labelFn, selected, placeholder) {
 
 function filterByCategory(items, category) {
   return (items || []).filter((a) => !category || a.category === category);
+}
+
+/* 资产分类中文提示（如 背景（bg）） */
+const CATEGORY_LABELS = {
+  bg: '背景（bg）',
+  scene: '场景（scene）',
+  standee: '立绘（standee）',
+  cg: 'CG（cg）',
+  ui: '界面（ui）',
+  bgm: '背景音乐（bgm）',
+  se: '音效（se）',
+  voice: '语音（voice）',
+  video: '视频（video）',
+  ico: '图标（ico）',
+};
+function categoryLabel(cat) {
+  return CATEGORY_LABELS[cat] || cat;
 }
 
 /* 通用列表点击选中。selectFn(el, id) 设置选中项并渲染。 */
@@ -252,10 +280,30 @@ function switchPage(name) {
   renderPage();
 }
 
-/* ------------------------- 功能区宽度拖拽调整 ------------------------- */
+/* ------------------------- 功能区宽度拖拽调整（持久化 + 多页面联动） ------------------------- */
+
+let _sideWidth = 240;
+let _sideWidthLoaded = false;
+
+async function loadSideWidth() {
+  try {
+    const w = await call('ui_get', 'side_width', 240);
+    if (typeof w === 'number' && w > 0) _sideWidth = w;
+  } catch (e) { /* 忽略 */ }
+  _sideWidthLoaded = true;
+  applySideWidth();
+}
+
+function applySideWidth() {
+  document.querySelectorAll('.hsplit > .side').forEach((side) => {
+    side.style.width = _sideWidth + 'px';
+    side.style.minWidth = _sideWidth + 'px';
+  });
+}
 
 function bindSplitters(root) {
   if (!root) return;
+  applySideWidth();
   root.querySelectorAll('.vsplit-handle').forEach((handle) => {
     if (handle.dataset.bound) return;
     handle.dataset.bound = '1';
@@ -268,14 +316,15 @@ function bindSplitters(root) {
       const startW = side.getBoundingClientRect().width;
       const move = (ev) => {
         const w = Math.max(140, Math.min(700, startW + (ev.clientX - startX)));
-        side.style.width = w + 'px';
-        side.style.minWidth = w + 'px';
+        _sideWidth = w;
+        applySideWidth();
       };
       const up = () => {
         document.removeEventListener('mousemove', move);
         document.removeEventListener('mouseup', up);
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
+        call('ui_set', 'side_width', Math.round(_sideWidth)).catch(() => {});
       };
       document.addEventListener('mousemove', move);
       document.addEventListener('mouseup', up);
@@ -326,15 +375,32 @@ function bindGlobal() {
   });
   window.addEventListener('keydown', (e) => {
     const mod = e.ctrlKey || e.metaKey;
+    const shift = e.shiftKey;
     const k = e.key.toLowerCase();
-    if (mod && k === 's') { e.preventDefault(); saveProject(); }
-    else if (mod && k === 'n') { e.preventDefault(); newProject(); }
+    // Ctrl+Shift+S 另存为；Ctrl+Shift+N 新建项目
+    if (mod && shift && k === 's') { e.preventDefault(); saveProjectAs(); }
+    else if (mod && shift && k === 'n') { e.preventDefault(); newProject(); }
+    // Ctrl+S 保存；Ctrl+N 新建内容；Ctrl+O 打开
+    else if (mod && k === 's') { e.preventDefault(); saveProject(); }
+    else if (mod && k === 'n') { e.preventDefault(); newCurrent(); }
     else if (mod && k === 'o') { e.preventDefault(); openProject(); }
-    else if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
-    else if (mod && k === 'z' && e.shiftKey) { e.preventDefault(); redo(); }
+    else if (mod && k === 'z' && !shift) { e.preventDefault(); undo(); }
+    else if (mod && k === 'z' && shift) { e.preventDefault(); redo(); }
     else if (mod && k === 'y') { e.preventDefault(); redo(); }
     else if (mod && k === 'f') { e.preventDefault(); focusSearch(); }
   });
+}
+
+/* Ctrl+N 按当前页面新建内容：剧情页弹类型选择，其余直接新建 */
+function newCurrent() {
+  const page = App.Pages[App.page];
+  if (!page) return;
+  if (typeof page.newItem === 'function') { page.newItem(); return; }
+  // 通用回退：找页面上的第一个「新建」按钮并点击
+  const host = document.getElementById('page-host');
+  const btn = host && host.querySelector('[id$="-add"]:not([disabled])');
+  if (btn) btn.click();
+  else toast('当前页面无可新建的内容');
 }
 
 function focusSearch() {
@@ -347,6 +413,7 @@ async function initApp() {
   if (App._init) return;
   App._init = true;
   bindGlobal();
+  await loadSideWidth();
   await ensureProject();
   renderPage();
 }

@@ -612,6 +612,142 @@ App.Pages.endings = {
   },
 };
 
+/* ==================== 函数页 ==================== */
+
+App.Pages.functions = {
+  render(host) {
+    const fns = App.data.functions || [];
+    host.innerHTML = `
+    <div class="hsplit">
+      <div class="side">
+        <div class="panel" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+          <div class="panel-title">函数</div>
+          <div class="list" id="fn-list">
+            ${fns.map((f) => `
+              <div class="list-item${f.id === App.cur.fnId ? ' active' : ''}" data-id="${esc(f.id)}">
+                ${esc(f.name || f.id)}<span class="sub">${esc(f.id)}</span>
+              </div>`).join('') || '<div class="empty">暂无函数</div>'}
+          </div>
+          <div class="toolbar stretch-btns">
+            <button class="btn btn-primary" id="fn-add">新建函数</button>
+            <button class="btn btn-danger" id="fn-del">删除函数</button>
+          </div>
+        </div>
+      </div>
+      <div class="vsplit-handle"></div>
+      <div class="main panel" style="overflow:auto;">${this.formHtml()}</div>
+    </div>`;
+
+    host.querySelector('#fn-list').addEventListener('click', (e) => {
+      const it = e.target.closest('.list-item');
+      if (it) { App.cur.fnId = it.dataset.id; renderPage(); }
+    });
+    host.querySelector('#fn-add').addEventListener('click', async () => {
+      await flushCommit();
+      const id = await call('next_id', 'functions');
+      App.data.functions.push({ id, name: '新函数', description: '', jump_to: '', unlock_cg: '', unlock_script: '', ending_id: '', effects: [] });
+      App.cur.fnId = id;
+      commit();
+      renderPage();
+    });
+    host.querySelector('#fn-del').addEventListener('click', () => {
+      const idx = App.data.functions.findIndex((x) => x.id === App.cur.fnId);
+      const f = App.data.functions[idx];
+      if (!f) return;
+      if (!confirm(`确定删除函数「${f.name}」？`)) return;
+      App.data.functions.splice(idx, 1);
+      App.cur.fnId = App.data.functions.length ? App.data.functions[Math.min(idx, App.data.functions.length - 1)].id : '';
+      commit();
+      renderPage();
+    });
+    this.bindForm(host);
+  },
+
+  formHtml() {
+    const f = App.data.functions.find((x) => x.id === App.cur.fnId);
+    if (!f) return '<div class="empty">选择或新建一个函数</div>';
+    const endings = App.data.endings || [];
+    const scripts = App.data.scripts || [];
+    const cgs = filterByCategory(App.data.assets, 'cg');
+    return `
+      <div class="field-grid">
+        <label class="field"><span>ID</span><input class="input-lg" readonly value="${esc(f.id)}"></label>
+        <label class="field"><span>名称</span><input class="input-lg" id="fn-name" value="${esc(f.name)}"></label>
+        <label class="field field-full"><span>描述</span><textarea id="fn-desc">${esc(f.description)}</textarea></label>
+        <label class="field field-full"><span>跳转至剧情</span><select id="fn-jump">${optionsHtml(scripts, 'id', (s) => s.id, f.jump_to, '(不跳转)')}</select></label>
+        <label class="field"><span>指向结局</span><select id="fn-ending">${optionsHtml(endings, 'id', (e) => `${e.name} (${e.id})`, f.ending_id, '(无)')}</select></label>
+        <label class="field"><span>解锁隐藏剧情</span><select id="fn-script">${optionsHtml(scripts, 'id', (s) => s.id, f.unlock_script, '(无)')}</select></label>
+        <label class="field"><span>解锁 CG</span><select id="fn-cg">${optionsHtml(cgs, 'id', (a) => `${a.file_name} (${a.id})`, f.unlock_cg, '(无)')}</select></label>
+        <div class="field field-full"><span>修改变量</span><div id="fn-effects"></div></div>
+      </div>`;
+  },
+
+  bindForm(host) {
+    const f = App.data.functions.find((x) => x.id === App.cur.fnId);
+    if (!f) return;
+    const box = host.querySelector('.main');
+    box.querySelector('#fn-name').addEventListener('input', (e) => { f.name = e.target.value; commit(); });
+    box.querySelector('#fn-desc').addEventListener('input', (e) => { f.description = e.target.value; commit(); });
+    box.querySelector('#fn-jump').addEventListener('change', (e) => { f.jump_to = e.target.value; commit(); });
+    box.querySelector('#fn-ending').addEventListener('change', (e) => { f.ending_id = e.target.value; commit(); });
+    box.querySelector('#fn-script').addEventListener('change', (e) => { f.unlock_script = e.target.value; commit(); });
+    box.querySelector('#fn-cg').addEventListener('change', (e) => { f.unlock_cg = e.target.value; commit(); });
+    // 效果编辑器
+    if (!Array.isArray(f.effects)) f.effects = [];
+    effectListEditor(box.querySelector('#fn-effects'), f.effects, commit);
+  },
+};
+
+/* 效果列表编辑器（目标/变量/操作/值） */
+function effectListEditor(container, effects, commit) {
+  container.innerHTML = '';
+  const rows = document.createElement('div');
+  rows.className = 'kv-editor';
+  const chars = App.data.characters || [];
+  const ops = [['add', '＋ 增加'], ['sub', '－ 减少'], ['set', '＝ 设为']];
+
+  const row = (e, i) => {
+    const r = document.createElement('div');
+    r.className = 'kv-row';
+    const target = document.createElement('select');
+    target.className = 'kv-val';
+    target.innerHTML = optionsHtml(chars, 'id', (c) => c.name, e.target, 'global（全局）');
+    const variable = document.createElement('input');
+    variable.className = 'kv-key';
+    variable.value = e.variable;
+    variable.placeholder = '变量名';
+    const op = document.createElement('select');
+    op.className = 'kv-val';
+    op.innerHTML = optionsHtml(ops, '0', (x) => x[1], e.operation);
+    const val = document.createElement('input');
+    val.type = 'number';
+    val.className = 'kv-val';
+    val.value = e.value ?? 0;
+    const del = document.createElement('button');
+    del.className = 'btn btn-sm btn-danger kv-del';
+    del.textContent = '×';
+    target.addEventListener('change', () => { e.target = target.value; commit(); });
+    variable.addEventListener('input', () => { e.variable = variable.value; commit(); });
+    op.addEventListener('change', () => { e.operation = op.value; commit(); });
+    val.addEventListener('input', () => { e.value = parseInt(val.value, 10) || 0; commit(); });
+    del.addEventListener('click', () => { effects.splice(i, 1); effectListEditor(container, effects, commit); });
+    r.appendChild(target); r.appendChild(variable); r.appendChild(op); r.appendChild(val); r.appendChild(del);
+    return r;
+  };
+
+  effects.forEach((e, i) => rows.appendChild(row(e, i)));
+  const add = document.createElement('button');
+  add.className = 'btn kv-add';
+  add.textContent = '+ 添加效果';
+  add.addEventListener('click', () => {
+    effects.push({ target: '', variable: '', operation: 'add', value: 0 });
+    effectListEditor(container, effects, commit);
+    commit();
+  });
+  container.appendChild(rows);
+  container.appendChild(add);
+}
+
 /* ==================== 资产页 ==================== */
 
 App.Pages.assets = {
@@ -627,14 +763,14 @@ App.Pages.assets = {
       if (sort === 'ref') return (refCount(b) || 0) - (refCount(a) || 0);
       return (b.created_at || '').localeCompare(a.created_at || '');
     });
-    const cats = ['bg', 'scene', 'standee', 'cg', 'ui', 'bgm', 'se', 'voice', 'video'];
+    const cats = ['bg', 'scene', 'standee', 'cg', 'ui', 'bgm', 'se', 'voice', 'video', 'ico'];
     host.innerHTML = `
     <div class="hsplit">
       <div class="side">
         <div class="panel" style="display:flex;flex-direction:column;flex:1;min-height:0;">
           <div class="toolbar" style="margin-top:0;">
             <select id="asset-cat" style="width:auto;flex:1;">
-              ${['', ...cats].map((c) => `<option value="${c}"${c === category ? ' selected' : ''}>${c ? c.toUpperCase() : '全部分类'}</option>`).join('')}
+              ${['', ...cats].map((c) => `<option value="${c}"${c === category ? ' selected' : ''}>${c ? categoryLabel(c) : '全部分类'}</option>`).join('')}
             </select>
             <select id="asset-sort" style="width:auto;">
               <option value="date"${sort === 'date' ? ' selected' : ''}>按日期</option>
@@ -744,14 +880,14 @@ App.Pages.assets = {
         box.textContent = `资产：${a.file_name}`;
       }
     });
-    const cats = ['bg', 'scene', 'standee', 'cg', 'ui', 'bgm', 'se', 'voice', 'video'];
+    const cats = ['bg', 'scene', 'standee', 'cg', 'ui', 'bgm', 'se', 'voice', 'video', 'ico'];
     const ref = refInfo(a);
     const refCount = ref ? ref.count : (a.reference_count ?? 0);
     const refLocations = ref ? ref.locations : [];
     detail.innerHTML = `
       <div class="field-grid">
         <label class="field"><span>ID</span><input class="input-lg" readonly value="${esc(a.id)}"></label>
-        <label class="field"><span>分类</span><select id="asset-cat-edit">${optionsHtml(cats, '', (c) => c, a.category)}</select></label>
+        <label class="field"><span>分类</span><select id="asset-cat-edit">${optionsHtml(cats, '', (c) => categoryLabel(c), a.category)}</select></label>
         <label class="field field-full"><span>文件名</span><input class="input-lg" readonly value="${esc(a.file_name)}"></label>
       </div>
       <div class="asset-meta">
@@ -982,17 +1118,11 @@ App.Pages.settings = {
         <label class="field"><span>项目名称</span><input class="input-lg" id="set-name" value="${esc(p.name)}"></label>
         <label class="field field-grid-inner"><span>版本号（总.大.小）</span>
           <div class="ver-controls">
-            <button class="btn btn-sm ver-minus" data-v="major">−</button>
             <input class="ver-input" id="ver-major" type="number" min="0" value="${p.version_major}" title="总版本">
-            <button class="btn btn-sm ver-plus" data-v="major">＋</button>
             <span class="ver-dot">.</span>
-            <button class="btn btn-sm ver-minus" data-v="minor">−</button>
             <input class="ver-input" id="ver-minor" type="number" min="0" value="${p.version_minor}" title="大版本">
-            <button class="btn btn-sm ver-plus" data-v="minor">＋</button>
             <span class="ver-dot">.</span>
-            <button class="btn btn-sm ver-minus" data-v="patch">−</button>
             <input class="ver-input" id="ver-patch" type="number" min="0" value="${p.version_patch}" title="小版本">
-            <button class="btn btn-sm ver-plus" data-v="patch">＋</button>
           </div>
         </label>
         <label class="field"><span>作者</span><input id="set-author" value="${esc(p.author)}"></label>
@@ -1009,12 +1139,17 @@ App.Pages.settings = {
         </label>
       </div>
       <div class="divider"></div>
+      <div class="panel-title">生成配置</div>
+      <div class="field-grid">
+        <label class="field"><span>exe 图标（ico 资产）</span><select id="set-icon">${optionsHtml(App.data.assets.filter((a) => a.category === 'ico'), 'id', (a) => `${a.file_name} (${a.id})`, p.exe_icon || '', '(默认)')}</select></label>
+      </div>
+      <div class="divider"></div>
       <div class="panel-title">游戏端默认配置</div>
       <div class="field-grid">
         <label class="field"><span>文字速度（字/秒）</span><input type="number" id="set-speed" value="${d.text_speed}" min="1" max="300"></label>
         <label class="field"><span>自动阅读等待（秒）</span><input type="number" id="set-auto" value="${d.auto_advance_delay}" min="0.5" max="60" step="0.5"></label>
-        <label class="field"><span>中文字体</span><select id="set-font-cn"></select></label>
-        <label class="field"><span>英文及数字字体</span><select id="set-font-en"></select></label>
+        <label class="field"><span>中文字体</span><select id="set-font-cn" class="set-font-select"></select></label>
+        <label class="field"><span>英文及数字字体</span><select id="set-font-en" class="set-font-select"></select></label>
         <label class="field"><span>默认字号</span><input type="number" id="set-fontsize" value="${d.font_size}" min="8" max="96"></label>
         <label class="field"><span>窗口宽度</span><input type="number" id="set-width" value="${d.window_width}" min="320"></label>
         <label class="field"><span>窗口高度</span><input type="number" id="set-height" value="${d.window_height}" min="240"></label>
@@ -1032,6 +1167,8 @@ App.Pages.settings = {
     bind('#set-fontsize', (e) => { d.font_size = parseInt(e.target.value, 10) || 24; commit(); });
     bind('#set-width', (e) => { d.window_width = parseInt(e.target.value, 10) || 1280; commit(); });
     bind('#set-height', (e) => { d.window_height = parseInt(e.target.value, 10) || 720; commit(); });
+    const iconSel = f.querySelector('#set-icon');
+    if (iconSel) iconSel.addEventListener('change', (e) => { p.exe_icon = e.target.value; commit(); });
 
     // 版本号：分栏输入 + 按钮调整
     const syncVerInputs = () => {
@@ -1049,14 +1186,6 @@ App.Pages.settings = {
     };
     ['major', 'minor', 'patch'].forEach((v) => {
       f.querySelector(`#ver-${v}`).addEventListener('input', applyVer);
-      f.querySelectorAll(`.ver-minus[data-v="${v}"], .ver-plus[data-v="${v}"]`).forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const delta = btn.classList.contains('ver-plus') ? 1 : -1;
-          p[`version_${v}`] = Math.max(0, (p[`version_${v}`] ?? 0) + delta);
-          applyVer();
-          syncVerInputs();
-        });
-      });
     });
 
     // 自动递增开关

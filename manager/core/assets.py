@@ -20,9 +20,10 @@ CATEGORY_DIRS = {
     "se": ("audio/se", "audio"),
     "voice": ("audio/voice", "audio"),
     "video": ("video", "video"),
+    "ico": ("images/ico", "image"),
 }
 
-_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
+_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".ico"}
 _AUDIO_EXT = {".mp3", ".ogg", ".wav"}
 _VIDEO_EXT = {".mp4", ".webm"}
 

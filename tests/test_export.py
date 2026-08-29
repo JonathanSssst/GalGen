@@ -22,27 +22,24 @@ def _make_project():
     p = GalGenProject.new()
     p.characters = [Character(id="char_0001", name="林晓")]
     p.scripts = [
-        Script(
-            id="script_0001",
-            dialogs=[
-                Dialog(id="dlg_0001", type="text", character_id="char_0001", content="你也来了呀。"),
-                Dialog(
-                    id="dlg_0002",
-                    type="choice",
-                    content="接下来去哪？",
-                    options=[
-                        Option(
-                            id="opt_0001",
-                            content="去天台",
-                            jump_to="dlg_0003",
-                            effects=[Effect(target="char_0001", variable="affection", operation="add", value=5)],
-                            unlock_cg="asset_0203",
-                        ),
-                        Option(id="opt_0002", content="回教室", jump_to=""),
-                    ],
-                ),
-            ],
-        )
+        Script(id="script_0001", dialogs=[Dialog(id="dlg_0001", type="text", character_id="char_0001", content="你也来了呀。")]),
+        Script(id="script_0002", dialogs=[
+            Dialog(
+                id="dlg_0002",
+                type="choice",
+                content="接下来去哪？",
+                options=[
+                    Option(
+                        id="opt_0001",
+                        content="去天台",
+                        jump_to="dlg_0003",
+                        effects=[Effect(target="char_0001", variable="affection", operation="add", value=5)],
+                        unlock_cg="asset_0203",
+                    ),
+                    Option(id="opt_0002", content="回教室", jump_to=""),
+                ],
+            ),
+        ]),
     ]
     return p
 
@@ -60,7 +57,7 @@ class TestExport(unittest.TestCase):
 
     def test_format_option_line(self):
         p = _make_project()
-        line = format_option_line(p, p.scripts[0].dialogs[1].options[0])
+        line = format_option_line(p, p.scripts[1].dialogs[0].options[0])
         self.assertIn("→ 去天台", line)
         self.assertIn("跳转：dlg_0003", line)
         self.assertIn("char_0001.affection ＋ 5", line)
@@ -70,10 +67,10 @@ class TestExport(unittest.TestCase):
         p = _make_project()
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "script.txt"
-            export_script_txt(p, p.scripts[0], path)
+            export_script_txt(p, p.scripts[1], path)
             content = path.read_text(encoding="utf-8")
             self.assertNotIn("\ufeff", content)
-            self.assertIn("林晓：你也来了呀。", content)
+            self.assertIn("接下来去哪？", content)
             self.assertIn("→ 去天台（跳转：dlg_0003", content)
 
     def test_export_project_txt(self):
