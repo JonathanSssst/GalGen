@@ -267,6 +267,8 @@ App.Pages.plots = {
   updateScripts() {
     const el = document.getElementById('plots-scripts');
     if (!el) return;
+    const countEl = document.querySelector('#page-host .panel-title .sub');
+    if (countEl) countEl.textContent = `${(App.data.scripts || []).length} 条`;
     const selSet = App.cur.scriptSel || new Set();
     const items = [...(App.data.scripts || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
     el.innerHTML = items.map((s) => {
@@ -655,61 +657,255 @@ App.Pages.plots = {
     `);
   },
 
-  /* ---------- 分支树 ---------- */
+  /* ---------- 分支树（流程图） ---------- */
 
+  /* 分支树：以箭头 + 方块绘制全部分支走向的流程图。
+   * - 按章节分组；每个章节从 start_script（或首条）开始向下铺开。
+   * - 方块 = 单条剧情（或其结局），箭头 = 走向（普通剧情→章节内下一条；
+   *   选项剧情→每个选项分支的落点：函数 jump_to 的剧情 / 结局 / 自然下一条）。
+   * - 同一剧情只出现一次（取其第一个父节点），保证构图为一棵树。
+   * - 未接入主线的剧情单独成组，保证「所有单条剧情」都出现在图中。
+   */
   renderTreeTab(content) {
-    const s = this.script();
-    if (!s) { content.innerHTML = '<div class="empty">选择或新建剧情</div>'; return; }
-    // 折叠状态持久化（切换对话后重渲染仍保持）
-    const collapsed = this._treeCollapsed || new Set();
-    this._treeCollapsed = collapsed;
+    const scripts = (App.data.scripts || []).slice();
+    const chapters = (App.data.chapters || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+    const functions = App.data.functions || [];
+    const endings = App.data.endings || [];
 
-    const renderNode = (d, depth) => {
-      const isChoice = d.type === 'choice';
-      const hasKids = isChoice && (d.options || []).length > 0;
-      const isOpen = !collapsed.has(d.id);
-      const active = d.id === App.cur.dialogId;
-      const arrow = hasKids ? `<span class="tree-arrow${isOpen ? '' : ' closed'}">▾</span>` : '<span class="tree-arrow-placeholder"></span>';
-      const kids = (hasKids && isOpen)
-        ? `<ul class="tree-children">${(d.options || []).map((o) => {
-            const desc = [];
-            if (o.jump_to) desc.push(`跳转 ${o.jump_to}`);
-            if (o.ending_id) desc.push(`结局 ${o.ending_id}`);
-            (o.effects || []).forEach((e) => desc.push(`${e.target}.${e.variable}${e.operation}${e.value}`));
-            if (o.unlock_cg) desc.push('解锁CG');
-            if (o.unlock_script) desc.push('解锁剧情');
-            return `<li class="tree-option" data-opt="${esc(o.id)}">
-              <span class="tree-opt-icon">→</span>
-              <span class="tree-opt-text">${esc(o.content || '(空)')}</span>
-              <span class="branch-desc">${desc.length ? esc(desc.join('；')) : '对话结束'}</span>
-            </li>`;
-          }).join('')}</ul>`
-        : '';
-      return `<li class="tree-node${isChoice ? ' is-choice' : ''}${active ? ' active' : ''}" data-dialog="${esc(d.id)}">
-        ${arrow}<span class="node${isChoice ? ' choice' : ''}"><span class="tag">${isChoice ? '选项' : '文本'}</span>${esc(d.id)}</span>
-        <span class="branch-desc">${esc((d.content || '').slice(0, 30))}</span>
-        ${kids}
-      </li>`;
+    if (!scripts.length) {
+      content.innerHTML = '<div class="empty">项目中还没有剧情，先在左侧新建单条剧情。</div>';
+      return;
+    }
+
+    const scriptById = {};
+    scripts.forEach((s) => { scriptById[s.id] = s; });
+    const fnById = {};
+    functions.forEach((f) => { fnById[f.id] = f; });
+    const endingById = {};
+    endings.forEach((e) => { endingById[e.id] = e; });
+
+    const byChapter = {};
+    scripts.forEach((s) => {
+      const key = s.chapter_id || '';
+      (byChapter[key] = byChapter[key] || []).push(s);
+    });
+
+    // 同章节内按 order 建立「下一条」映射
+    const nextMap = {};
+    Object.keys(byChapter).forEach((cid) => {
+      const list = byChapter[cid].slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+      list.forEach((s, i) => { if (i + 1 < list.length) nextMap[s.id] = list[i + 1].id; });
+    });
+
+    const dlg = (s) => (s.dialogs && s.dialogs[0]) || {};
+    const previewOf = (s) => {
+      const d = dlg(s);
+      return (d ? (d.speaker_label ? `${d.speaker_label}：` : '') + (d.content || (d.type === 'sfx' ? '音效' : d.type === 'video' ? '视频' : '')) : '').slice(0, 40);
+    };
+    const resolveOption = (opt) => {
+      const fn = opt.action_id ? fnById[opt.action_id] : null;
+      if (fn) {
+        if (fn.jump_to) return { kind: 'script', id: fn.jump_to };
+        if (fn.ending_id) return { kind: 'ending', id: fn.ending_id };
+        return { kind: 'next' };
+      }
+      if (opt.jump_to) return { kind: 'script', id: opt.jump_to };
+      if (opt.ending_id) return { kind: 'ending', id: opt.ending_id };
+      if (opt.unlock_script) return { kind: 'script', id: opt.unlock_script };
+      return { kind: 'next' };
     };
 
-    content.innerHTML = `<div class="hint" style="margin-bottom:10px;">点击▾折叠/展开选项节点；点击对话节点可在对话列表中定位。</div>
-      <ul class="tree">${s.dialogs.map((d) => renderNode(d, 0)).join('') || '<li class="empty">暂无对话</li>'}</ul>`;
+    // 一个剧情节点的子节点（保留顺序、去重）：普通剧情→自然下一条；选项→各自落点
+    const childrenOf = (sid) => {
+      const s = scriptById[sid];
+      if (!s) return [];
+      const d = dlg(s);
+      const ids = [];
+      const push = (x) => { if (!ids.includes(x)) ids.push(x); };
+      if (d.type === 'choice') {
+        (d.options || []).forEach((o) => {
+          const t = resolveOption(o);
+          if (t.kind === 'script') push(t.id);
+          else if (t.kind === 'ending') push('end:' + t.id);
+          else { const n = nextMap[sid]; if (n) push(n); }
+        });
+        if (!(d.options || []).length) { const n = nextMap[sid]; if (n) push(n); }
+      } else {
+        const n = nextMap[sid];
+        if (n) push(n);
+      }
+      return ids;
+    };
 
-    content.querySelectorAll('.tree-node[data-dialog]').forEach((li) => {
-      li.addEventListener('click', (e) => {
-        const toggle = e.target.closest('.tree-arrow');
-        const dialogId = li.dataset.dialog;
-        if (toggle) {
-          const d = s.dialogs.find((x) => x.id === dialogId);
-          if (d && d.type === 'choice' && (d.options || []).length) {
-            if (collapsed.has(dialogId)) collapsed.delete(dialogId); else collapsed.add(dialogId);
-            this.renderTreeTab(content);
-            return;
-          }
-        }
-        // 点击节点 → 定位到该剧情并切到表单
-        App.cur.scriptId = dialogId;
-        App.cur.dialogId = this.script() && this.script().dialogs[0] ? this.script().dialogs[0].id : '';
+    // 由根构建树（同一剧情取第一个父节点，防环）
+    const buildTree = (rootId) => {
+      const root = { id: rootId, children: [] };
+      const placed = new Set([rootId]);
+      const stack = [root];
+      while (stack.length) {
+        const cur = stack.shift();
+        childrenOf(cur.id).forEach((cid) => {
+          if (placed.has(cid)) return;
+          placed.add(cid);
+          const child = { id: cid, children: [] };
+          cur.children.push(child);
+          stack.push(child);
+        });
+      }
+      return root;
+    };
+
+    /* ---------- 树形自动布局 ---------- */
+    const BOX_W = 176, BOX_H = 68, V_GAP = 46, H_GAP = 14;
+    const typeLabel = (t) => ({ text: '文本', choice: '选项', sfx: '音效', video: '视频' })[t] || t;
+
+    const assignCx = (node, left) => {
+      if (!node.children.length) { node.cx = left; return left + (BOX_W + H_GAP); }
+      let avail = left;
+      node.children.forEach((c) => { avail = assignCx(c, avail); });
+      node.cx = (node.children[0].cx + node.children[node.children.length - 1].cx) / 2;
+      return avail;
+    };
+    const assignDepth = (root) => {
+      root.depth = 0;
+      let maxDepth = 0;
+      const q = [root];
+      while (q.length) {
+        const n = q.shift();
+        maxDepth = Math.max(maxDepth, n.depth);
+        n.children.forEach((c) => { c.depth = n.depth + 1; q.push(c); });
+      }
+      return maxDepth;
+    };
+
+    // 渲染一棵树 → { html, width, height }（html = 方块的绝对定位 div + 一张箭头 SVG）
+    const renderFlow = (rootId) => {
+      const root = buildTree(rootId);
+      assignDepth(root);                       // depth = 层数
+      assignCx(root, 0);                        // cx = 水平中心坐标（叶子按 0, W+G, 2(W+G)…）
+      // 收集节点与边
+      const boxes = [];
+      const edges = [];
+      (function walk(n) {
+        const y = n.depth * (BOX_H + V_GAP);
+        const x = n.cx - BOX_W / 2;
+        boxes.push({ n, x, y });
+        n.children.forEach((c) => {
+          edges.push({ from: n, to: c });
+          walk(c);
+        });
+      })(root);
+      // 坐标归一化，保证最小 x / y 为 0，避免方块溢出画布左侧
+      let minX = 0, minY = 0, maxX = 0, maxY = 0;
+      boxes.forEach((b) => {
+        minX = Math.min(minX, b.x);
+        minY = Math.min(minY, b.y);
+        maxX = Math.max(maxX, b.x + BOX_W);
+        maxY = Math.max(maxY, b.y + BOX_H);
+      });
+      if (minX < 0 || minY < 0) {
+        boxes.forEach((b) => { b.x -= minX; b.y -= minY; });
+        maxX -= minX; maxY -= minY;
+      }
+      const width = Math.ceil(maxX + 4);
+      const height = Math.ceil(maxY + 4);
+
+      // 方块
+      const boxHtml = boxes.map((b) => {
+        const isEnd = b.n.id.indexOf('end:') === 0;
+        const s = isEnd ? null : scriptById[b.n.id];
+        const tag = isEnd ? '结局' : this.typeLabel(dlg(s).type);
+        const id = isEnd ? (endingById[b.n.id.slice(4)] ? endingById[b.n.id.slice(4)].name : b.n.id.slice(4)) : b.n.id;
+        const txt = isEnd ? '' : previewOf(s);
+        const cls = 'flow-box'
+          + (isEnd ? ' end' : (dlg(s).type === 'choice' ? ' choice' : ''))
+          + (s && s.id === App.cur.scriptId ? ' active' : '');
+        const lbl = `${esc(tag)}${esc(s ? ' ' + s.id : '')}`;
+        return `<div class="${cls}" data-script="${esc(b.n.id)}" style="left:${b.x}px;top:${b.y}px;">
+          ${isEnd ? '' : `<div class="fb-tag">${esc(tag)}</div>`}
+          <div class="fb-id">${isEnd ? '🎯 ' + esc(id) : esc(id)}</div>
+          ${txt ? `<div class="fb-txt">${esc(txt)}</div>` : ''}
+        </div>`;
+      }).join('');
+
+      // 箭头（SVG，从父底中点到子顶中点），坐标直接取自最终方块位置
+      const boxByNode = {};
+      boxes.forEach((b) => { boxByNode[b.n.id] = b; });
+      const arrowPaths = edges.map((e) => {
+        const from = boxByNode[e.from.id], to = boxByNode[e.to.id];
+        const sx = from.x + BOX_W / 2, sy = from.y + BOX_H;
+        const ex = to.x + BOX_W / 2, ey = to.y;
+        const my = sy + (ey - sy) / 2;
+        return `<path d="M ${sx} ${sy} L ${sx} ${my} L ${ex} ${my} L ${ex} ${ey}" marker-end="url(#flowArrow)"/>`;
+      }).join('');
+
+      const svg = `<svg class="flow-svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+        <defs><marker id="flowArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L8,3 L0,6 z" fill="#8a97a8"/></marker></defs>
+        ${arrowPaths}
+      </svg>`;
+      return { html: boxHtml + svg, width, height };
+    };
+
+    // 每章节渲染一棵流程图（章节标题 + 树），再叠加未接入主线脚本
+    const rendered = [];
+    let cursorY = 0;
+    const CHAP_TITLE_H = 26, CHAP_GAP = 24;
+
+    chapters.forEach((ch) => {
+      const items = (byChapter[ch.id] || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+      if (!items.length) return;
+      const startId = (ch.start_script && scriptById[ch.start_script]) ? ch.start_script : items[0].id;
+      const tree = renderFlow(startId);
+      const title = `<div class="flow-chapter-title">${esc(ch.name || ch.id)} <span class="fb-count">（${items.length} 条剧情）</span></div>`;
+      const block = `<section class="flow-sector" style="top:${cursorY}px">
+        ${title}
+        <div class="flow-canvas" style="width:${tree.width}px;height:${tree.height}px;">${tree.html}</div>
+      </section>`;
+      rendered.push(block);
+      cursorY += CHAP_TITLE_H + tree.height + CHAP_GAP;
+      // 未接入主线者（同一章节内不可达的脚本）各成一小棵
+      const reached = new Set();
+      (function walk(n) { reached.add(n.id); n.children.forEach(walk); })(buildTree(startId));
+      const orphans = items.filter((s) => s.id !== startId && !reached.has(s.id));
+      if (orphans.length) {
+        orphans.forEach((s) => {
+          const t = renderFlow(s.id);
+          const o = `<section class="flow-sector flow-orphan" style="top:${cursorY}px">
+            <div class="flow-chapter-title">— 未接入主线：${esc(s.id)}</div>
+            <div class="flow-canvas" style="width:${t.width}px;height:${t.height}px;">${t.html}</div>
+          </section>`;
+          rendered.push(o);
+          cursorY += 22 + t.height + CHAP_GAP;
+        });
+      }
+    });
+
+    // 无章节 / 章节不在列表中的剧情
+    const chapIds = new Set(chapters.map((c) => c.id));
+    const loose = scripts.filter((s) => !chapIds.has(s.chapter_id));
+    if (loose.length) {
+      const head = `<section class="flow-sector" style="top:${cursorY}px">
+        <div class="flow-chapter-title">未分章节的剧情（${loose.length} 条）</div>`;
+      const inner = loose.map((s) => {
+        const t = renderFlow(s.id);
+        return `<div class="flow-canvas" style="width:${t.width}px;height:${t.height}px;">${t.html}</div>`;
+      }).join('');
+      rendered.push(head + inner + '</section>');
+    }
+
+    content.innerHTML = `
+      <div class="hint" style="margin-bottom:10px;">分支树（流程图）：方块=单条剧情，箭头=剧情走向；点绿框为当前剧情。点击方块可在左侧定位该剧情。</div>
+      <div class="flow-forest" style="position:relative;height:${cursorY + 40}px;">${rendered.join('')}</div>`;
+
+    content.querySelectorAll('.flow-box[data-script]').forEach((box) => {
+      box.addEventListener('click', (e) => {
+        if (box.classList.contains('end')) return;
+        const sid = box.dataset.script;
+        const s = scriptById[sid];
+        if (!s) return;
+        App.cur.scriptId = sid;
+        App.cur.dialogId = s.dialogs && s.dialogs[0] ? s.dialogs[0].id : '';
         App.cur.plotTab = 'form';
         this.updateScripts();
         this.renderTabs();

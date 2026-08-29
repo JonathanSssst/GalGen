@@ -522,6 +522,79 @@ table.data tr.selected { background: #d9edff; }
 .tree .node.choice .tag { color: #d9822b; }
 .tree .branch-desc { color: var(--text-muted); font-size: 11px; margin-left: 6px; }
 
+/* 分支树：章节分组 / 结局 / 未接入主线 */
+.tree-chapter { margin: 6px 0; }
+.tree-chapter-head {
+  display: inline-block;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 3px 6px;
+  border-bottom: 1px dashed var(--border);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.tree-chapter-head:hover { background: rgba(30, 144, 255, 0.08); }
+.tree-chunk > .tree-opt-text b { color: #d9822b; }
+.tree-node.tree-end .node { background: #eef7ec; border-color: #b7e3ae; }
+.tree-node.tree-end .node .tag { color: #4a9e52; }
+.tree-option-branch > .tree-opt-text { color: var(--text); }
+.tree-option-branch > .tree-opt-text:hover { color: var(--accent); }
+.tree-node .end-mark { color: #a3aab5; font-style: italic; }
+
+/* ==================== 分支树：流程图（方块 + 箭头） ==================== */
+.flow-forest { position: relative; }
+.flow-sector { position: absolute; left: 0; }
+.flow-chapter-title {
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.flow-chapter-title .fb-count { color: var(--text-muted); font-weight: 400; font-size: 12px; }
+.flow-canvas { position: relative; }
+.flow-box {
+  position: absolute;
+  width: 176px;
+  height: 68px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1.5px solid #b9c2cf;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10);
+}
+.flow-box:hover { box-shadow: 0 2px 8px rgba(30, 144, 255, 0.25); }
+.flow-box .fb-tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-right: 4px;
+  vertical-align: 1px;
+}
+.flow-box .fb-id { font-weight: 600; color: var(--text); }
+.flow-box .fb-txt { color: var(--text-muted); margin-top: 2px; word-break: break-all; }
+.flow-box.choice { border-color: #e8a95b; background: #fff8ec; border-width: 1.5px; }
+.flow-box.choice .fb-tag { color: #d9822b; }
+.flow-box.end { border-style: dashed; border-color: #7cc07f; background: #f0faf0; cursor: default; }
+.flow-box.end .fb-id { color: #4a9e52; }
+.flow-box.active {
+  border-color: #1e90ff;
+  box-shadow: 0 0 0 2px rgba(30, 144, 255, 0.25);
+}
+.flow-svg { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
+.flow-svg path { fill: none; stroke: #8a97a8; stroke-width: 1.6; }
+.flow-orphan .flow-chapter-title { color: #d9822b; }
+
+
 /* 折叠 / 高亮 / 点击定位 */
 .tree-node { cursor: pointer; }
 .tree-node .tree-arrow,
