@@ -34,9 +34,3 @@ htmlcov/
 
 # Scratch files
 scratch/
-
-# 构建产物（桌面示例除外，仓库内不提交）
-GalGen示例项目/
-
-# 测试用小说素材（不提交）
-gal test - dragon raja/
