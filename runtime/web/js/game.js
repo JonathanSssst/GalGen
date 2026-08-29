@@ -815,10 +815,10 @@ function stopLoopSfx(stopScriptId) {
 
 function executeActions() {
   const d = G.script.dialogs[0];
-  (d.actions || []).forEach((fnId) => {
+  for (const fnId of (d.actions || [])) {
     const fn = (G.data.functions || []).find((f) => f.id === fnId);
-    if (fn) applyFunction(fn);
-  });
+    if (fn && applyFunction(fn)) break;
+  }
 }
 
 function applyFunction(fn) {
@@ -831,6 +831,12 @@ function applyFunction(fn) {
     G.unlockedScripts.push(fn.unlock_script); msgs.push('解锁隐藏剧情');
   }
   if (msgs.length) { persistProgress(); toast(msgs.join('、')); }
+  // v2.2：函数可含跳转 / 结局（优先于自然下一条）
+  if (fn.ending_id) { endGame(fn.ending_id); return true; }
+  if (fn.jump_to && (G.data.scripts || []).some((s) => s.id === fn.jump_to)) {
+    playScript(fn.jump_to); return true;
+  }
+  return false;
 }
 
 /* ------------------------- 选项系统 ------------------------- */
@@ -880,7 +886,7 @@ function selectOption(i) {
   // v2.1：选项经函数（action_id）执行；旧字段兼容
   if (opt.action_id) {
     const fn = (G.data.functions || []).find((f) => f.id === opt.action_id);
-    if (fn) applyFunction(fn);
+    if (fn && applyFunction(fn)) return;
   } else {
     applyEffects(opt.effects);
     const msgs = [];

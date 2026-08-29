@@ -741,22 +741,26 @@ App.Pages.plots = {
       return out;
     };
 
-    // 由根构建树（同一剧情取第一个父节点，防环）
+    // 由根构建树（同一剧情取第一个父节点，防环）；指向已出现节点的边记为回边
     const buildTree = (rootId) => {
       const root = { id: rootId, children: [] };
       const placed = new Set([rootId]);
+      const backEdges = [];
       const stack = [root];
       while (stack.length) {
         const cur = stack.shift();
         childrenOf(cur.id).forEach((c) => {
-          if (placed.has(c.id)) return;
+          if (placed.has(c.id)) {
+            backEdges.push({ from: cur.id, to: c.id, label: c.label });
+            return;
+          }
           placed.add(c.id);
           const child = { id: c.id, label: c.label, children: [] };
           cur.children.push(child);
           stack.push(child);
         });
       }
-      return root;
+      return { root, backEdges };
     };
 
     /* ---------- 树形自动布局 ---------- */
@@ -784,7 +788,7 @@ App.Pages.plots = {
 
     // 渲染一棵树 → { html, width, height }（html = 方块的绝对定位 div + 一张箭头 SVG）
     const renderFlow = (rootId) => {
-      const root = buildTree(rootId);
+      const { root, backEdges } = buildTree(rootId);
       assignDepth(root);                       // depth = 层数
       assignCx(root, 0);                        // cx = 水平中心坐标（叶子按 0, W+G, 2(W+G)…）
       // 收集节点与边
@@ -811,7 +815,7 @@ App.Pages.plots = {
         boxes.forEach((b) => { b.x -= minX; b.y -= minY; });
         maxX -= minX; maxY -= minY;
       }
-      const width = Math.ceil(maxX + 4);
+      let width = Math.ceil(maxX + 4);
       const height = Math.ceil(maxY + 4);
 
       // 方块
@@ -851,10 +855,33 @@ App.Pages.plots = {
         return `<path d="M ${sx} ${sy} L ${sx} ${my} L ${ex} ${my} L ${ex} ${ey}" marker-end="url(#flowArrow)"/>${label}`;
       }).join('');
 
+      // 回边（如“重新开始”→第一条对话）：从来源方块底部绕右侧回绕，从目标方块右侧箭头指入
+      let backPaths = '';
+      if (backEdges.length) {
+        const laneX = maxX + 18;
+        backPaths = backEdges.map((e, i) => {
+          const from = boxByNode[e.from], to = boxByNode[e.to];
+          if (!from || !to) { if (window.console) console.error('flow back-edge missing box:', e); return ''; }
+          const sx = from.x + BOX_W / 2, sy = from.y + BOX_H;
+          const ty = to.y + BOX_H / 2;
+          const rx = to.x + BOX_W - 4;
+          const lx = laneX + i * 14;
+          let label = '';
+          if (e.label) {
+            const raw = String(e.label);
+            const txt = esc(raw.slice(0, 14)) + (raw.length > 14 ? '…' : '');
+            label = `<text class="flow-arrow-label" x="${lx}" y="${sy + 18 - 7}" text-anchor="middle">${txt}</text>`;
+          }
+          return `<path class="flow-back-edge" d="M ${sx} ${sy} L ${sx} ${sy + 18} L ${lx} ${sy + 18} L ${lx} ${ty} L ${rx} ${ty}" marker-end="url(#flowArrow)"/>${label}`;
+        }).join('');
+        width = Math.max(width, Math.ceil(laneX + backEdges.length * 14 + 4));
+      }
+
       const svg = `<svg class="flow-svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
         <defs><marker id="flowArrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="userSpaceOnUse">
           <path d="M0,0 L8,3 L0,6 z" fill="#8a97a8"/></marker></defs>
         ${arrowPaths}
+        ${backPaths}
       </svg>`;
       return { html: boxHtml + svg, width, height };
     };
@@ -878,7 +905,7 @@ App.Pages.plots = {
       cursorY += CHAP_TITLE_H + tree.height + CHAP_GAP;
       // 未接入主线者（同一章节内不可达的脚本）各成一小棵
       const reached = new Set();
-      (function walk(n) { reached.add(n.id); n.children.forEach(walk); })(buildTree(startId));
+      (function walk(n) { reached.add(n.id); n.children.forEach(walk); })(buildTree(startId).root);
       const orphans = items.filter((s) => s.id !== startId && !reached.has(s.id));
       if (orphans.length) {
         orphans.forEach((s) => {
