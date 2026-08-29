@@ -720,8 +720,8 @@ function advance() {
   if (G.phase === 'video') return;
   if (!G.typingDone) { completeTyping(); return; }
   if (G.phase === 'options') return;
-  // 单条剧情播放完毕 → 自动播下一条剧情
-  executeActions();
+  // 单条剧情播放完毕 → 执行绑定函数；若函数已跳转/结局则不再自然推进
+  if (executeActions()) return;
   endScript();
 }
 
@@ -817,8 +817,9 @@ function executeActions() {
   const d = G.script.dialogs[0];
   for (const fnId of (d.actions || [])) {
     const fn = (G.data.functions || []).find((f) => f.id === fnId);
-    if (fn && applyFunction(fn)) break;
+    if (fn && applyFunction(fn)) return true;
   }
+  return false;
 }
 
 function applyFunction(fn) {

@@ -725,6 +725,16 @@ App.Pages.plots = {
       const seen = {};
       const push = (id, label) => { if (seen[id]) return; seen[id] = 1; out.push({ id, label }); };
       const optLabel = (o, i) => String(o.content || '').trim() || (['A', 'B', 'C', 'D', 'E', 'F'][i] || '选项' + (i + 1));
+      // 绑定函数（actions）的跳转/结局落点：取第一个有跳转/结局的函数（与游戏端一致）
+      const actionTarget = () => {
+        for (const fnId of (d.actions || [])) {
+          const fn = fnById[fnId];
+          if (!fn) continue;
+          if (fn.jump_to) return { kind: 'script', id: fn.jump_to };
+          if (fn.ending_id) return { kind: 'ending', id: fn.ending_id };
+        }
+        return null;
+      };
       if (d.type === 'choice') {
         (d.options || []).forEach((o, i) => {
           const t = resolveOption(o);
@@ -735,8 +745,10 @@ App.Pages.plots = {
         });
         if (!(d.options || []).length) { const n = nextMap[sid]; if (n) push(n, ''); }
       } else {
-        const n = nextMap[sid];
-        if (n) push(n, '');
+        const t = actionTarget();
+        if (t && t.kind === 'script') push(t.id, '');
+        else if (t && t.kind === 'ending') push('end:' + t.id, '');
+        else { const n = nextMap[sid]; if (n) push(n, ''); }
       }
       return out;
     };
