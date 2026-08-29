@@ -992,6 +992,17 @@ function endScript() {
   }
   const endingId = evaluateChapterEnding();
   if (endingId) { endGame(endingId); return; }
+  // v2.2：显式下一剧情（next_id）；"" 表示分支终点，不继续本章自然下一条
+  const s = G.script;
+  if (s && typeof s.next_id !== 'undefined' && s.next_id !== null) {
+    if (s.next_id) {
+      if ((G.data.scripts || []).some((x) => x.id === s.next_id)) { playScript(s.next_id); return; }
+    }
+    const nextChapId = nextChapterScript();
+    if (nextChapId) { playScript(nextChapId); return; }
+    showScriptEnd();
+    return;
+  }
   const nextId = nextScriptInChapter();
   if (nextId) { playScript(nextId); return; }
   const nextChapId = nextChapterScript();

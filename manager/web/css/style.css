@@ -586,6 +586,17 @@ table.data tr.selected { background: #d9edff; }
 .flow-box.choice .fb-tag { color: #d9822b; }
 .flow-box.end { border-style: dashed; border-color: #7cc07f; background: #f0faf0; cursor: default; }
 .flow-box.end .fb-id { color: #4a9e52; }
+.flow-box.stop { border-style: dashed; border-color: #d9822b; background: #fdf6ee; }
+.flow-box .fb-stop {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #d9822b;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-right: 4px;
+}
 .flow-box.active {
   border-color: #1e90ff;
   box-shadow: 0 0 0 2px rgba(30, 144, 255, 0.25);

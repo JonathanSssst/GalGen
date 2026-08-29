@@ -188,12 +188,17 @@ class Script:
     """剧情 = 一个对话单元（text / choice / sfx / video）。
 
     order：同章节内播放顺序（游戏端按章节 order + 剧情 order 自动推进）。
+    next_id：显式下一剧情（v2.2 起）。语义：
+      - 缺省 / null：沿用 order 自动推进（兼容旧数据）；
+      - ""：本剧情为分支终点，播放完不继续本章自然下一条；
+      - 具体剧情 ID：播放完直接跳转到该剧情。
     兼容旧文件：旧脚本可能含多条 dialogs，加载时拆分为多个单条剧情。
     """
 
     id: str = ""
     chapter_id: str = ""
     order: int = 0
+    next_id: str = None
     dialogs: List[Dialog] = field(default_factory=list)
 
 

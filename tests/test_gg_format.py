@@ -89,6 +89,30 @@ class TestGalGenProject(unittest.TestCase):
             loaded = GalGenProject.load(path)
         self.assertEqual(loaded.project.name, "JSON 测试")
 
+    def test_script_next_id_serialization(self):
+        """next_id 三种取值：缺省(None)不写入文件、'' 写入分支终点、具体 ID 写入跳转。"""
+        p = GalGenProject.new()
+        p.scripts = [
+            Script(id="s1", chapter_id="c1", order=0, dialogs=[Dialog(id="d1", type="text")]),
+            Script(id="s2", chapter_id="c1", order=1, next_id="", dialogs=[Dialog(id="d2", type="text")]),
+            Script(id="s3", chapter_id="c1", order=2, next_id="s5", dialogs=[Dialog(id="d3", type="text")]),
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "next.gg"
+            p.save(path)
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            by_id = {s["id"]: s for s in raw["data"]["scripts"]}
+            # None（缺省）不写入
+            self.assertNotIn("next_id", by_id["s1"])
+            # '' 与具体 ID 写入
+            self.assertEqual(by_id["s2"].get("next_id"), "")
+            self.assertEqual(by_id["s3"].get("next_id"), "s5")
+            # 读回后语义保留
+            loaded = GalGenProject.load(path)
+            self.assertIsNone(loaded.find_by_id("scripts", "s1").next_id)
+            self.assertEqual(loaded.find_by_id("scripts", "s2").next_id, "")
+            self.assertEqual(loaded.find_by_id("scripts", "s3").next_id, "s5")
+
 
 if __name__ == "__main__":
     unittest.main()

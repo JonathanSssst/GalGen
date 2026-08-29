@@ -174,6 +174,14 @@ def _scripts_from_dict(raw_list) -> List[Script]:
     return result
 
 
+def _script_to_dict(s: Script) -> dict:
+    """剧情序列化：next_id 为 None（缺省）时不写入文件，保持旧格式兼容。"""
+    d = dataclasses.asdict(s)
+    if d.get("next_id") is None:
+        d.pop("next_id", None)
+    return d
+
+
 @dataclasses.dataclass
 class GalGenProject:
     """内存中的项目容器，对应 .gg 文件整体（meta + data）。"""
@@ -221,7 +229,7 @@ class GalGenProject:
             "characters": [dataclasses.asdict(c) for c in self.characters],
             "scenes": [dataclasses.asdict(s) for s in self.scenes],
             "chapters": [dataclasses.asdict(c) for c in self.chapters],
-            "scripts": [dataclasses.asdict(s) for s in self.scripts],
+            "scripts": [_script_to_dict(s) for s in self.scripts],
             "assets": [dataclasses.asdict(a) for a in self.assets],
             "endings": [dataclasses.asdict(e) for e in self.endings],
             "functions": [dataclasses.asdict(f) for f in self.functions],

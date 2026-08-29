@@ -15,11 +15,38 @@ function galgenDialogForm() {
   };
   return {
     d,
+    script: s,
     chars,
     scenes: App.data.scenes || [],
     assets: App.data.assets || [],
     get currentChar() {
       return this.chars.find((x) => x.id === (this.d && this.d.character_id)) || null;
+    },
+    // 显式下一剧情（分支延续）：自动 / 终点 / 指定剧情
+    get nextSel() {
+      const n = this.script ? this.script.next_id : undefined;
+      if (n === undefined || n === null) return '__AUTO__';
+      if (n === '') return '__END__';
+      return n;
+    },
+    set nextSel(v) {
+      if (!this.script) return;
+      if (v === '__AUTO__') delete this.script.next_id;
+      else if (v === '__END__') this.script.next_id = '';
+      else this.script.next_id = v;
+      commit();
+    },
+    get nextOptionsHtml() {
+      const cur = this.nextSel;
+      const selfId = this.script ? this.script.id : '';
+      let h = `<option value="__AUTO__"${cur === '__AUTO__' ? ' selected' : ''}>自动（章节内下一条）</option>`;
+      h += `<option value="__END__"${cur === '__END__' ? ' selected' : ''}>在此结束（分支终点）</option>`;
+      const list = (App.data.scripts || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+      for (const sc of list) {
+        if (sc.id === selfId) continue;
+        h += `<option value="${esc(sc.id)}"${cur === sc.id ? ' selected' : ''}>跳转到 ${esc(sc.id)}</option>`;
+      }
+      return h;
     },
     get standees() { return this.assets.filter((a) => a.category === 'standee'); },
     get voices() { return this.assets.filter((a) => a.category === 'voice'); },
@@ -387,6 +414,10 @@ App.Pages.plots = {
         <label class="field"><span>场景</span>
           <select x-model="d.scene_id" @change="commit()" x-html="sceneOptionsHtml"></select>
         </label>
+        <label class="field"><span>下一剧情（分支延续）</span>
+          <select x-model="nextSel" x-html="nextOptionsHtml"></select>
+          <span class="hint" style="margin-top:2px;display:block;">自动=按章节内顺序推进；在此结束=本条为分支终点，不继续下一对话；也可指定跳转到某剧情。</span>
+        </label>
         <div class="field field-full"><span>功能（引用函数，可多个；函数在「函数」页管理）</span><div id="pf-actions"></div></div>
         <label class="field field-full"><span>对话内容（选项类型时此处为问题文本）</span>
           <textarea x-model="d.content" @input.debounce.500ms="commit(); updateListItem()"></textarea>
@@ -449,6 +480,10 @@ App.Pages.plots = {
         <label class="field"><span>ID</span><input class="input-lg" readonly x-model="d.id"></label>
         <label class="field"><span>场景</span>
           <select x-model="d.scene_id" @change="commit()" x-html="sceneOptionsHtml"></select>
+        </label>
+        <label class="field"><span>下一剧情（分支延续）</span>
+          <select x-model="nextSel" x-html="nextOptionsHtml"></select>
+          <span class="hint" style="margin-top:2px;display:block;">自动=按章节内顺序推进；在此结束=本条为分支终点，不继续下一对话；也可指定跳转到某剧情。</span>
         </label>
         <div class="field field-full"><span>音效（纯音频；播放后按播放方式推进）</span><div id="sfx-list"></div></div>
       </div>`;
@@ -531,6 +566,10 @@ App.Pages.plots = {
         <label class="field"><span>ID</span><input class="input-lg" readonly x-model="d.id"></label>
         <label class="field"><span>场景</span>
           <select x-model="d.scene_id" @change="commit()" x-html="sceneOptionsHtml"></select>
+        </label>
+        <label class="field"><span>下一剧情（分支延续）</span>
+          <select x-model="nextSel" x-html="nextOptionsHtml"></select>
+          <span class="hint" style="margin-top:2px;display:block;">自动=按章节内顺序推进；在此结束=本条为分支终点，不继续下一对话；也可指定跳转到某剧情。</span>
         </label>
         <label class="field field-full"><span>视频（沉浸播放，隐藏对话区；播完自动下一条）</span>
           <div class="toolbar" style="margin-top:4px;">
@@ -748,7 +787,16 @@ App.Pages.plots = {
         const t = actionTarget();
         if (t && t.kind === 'script') push(t.id, '');
         else if (t && t.kind === 'ending') push('end:' + t.id, '');
-        else { const n = nextMap[sid]; if (n) push(n, ''); }
+        else {
+          // 显式下一剧情（next_id）："" 表示分支终点；缺省则按章节内 order 自动推进
+          const nid = s.next_id;
+          if (typeof nid !== 'undefined' && nid !== null) {
+            if (nid) push(nid, '');
+          } else {
+            const n = nextMap[sid];
+            if (n) push(n, '');
+          }
+        }
       }
       return out;
     };
@@ -834,15 +882,18 @@ App.Pages.plots = {
       const boxHtml = boxes.map((b) => {
         const isEnd = b.n.id.indexOf('end:') === 0;
         const s = isEnd ? null : scriptById[b.n.id];
+        const isStop = !!s && typeof s.next_id !== 'undefined' && s.next_id === '';
         const tag = isEnd ? '结局' : this.typeLabel(dlg(s).type);
         const id = isEnd ? (endingById[b.n.id.slice(4)] ? endingById[b.n.id.slice(4)].name : b.n.id.slice(4)) : b.n.id;
         const txt = isEnd ? '' : previewOf(s);
         const cls = 'flow-box'
           + (isEnd ? ' end' : (dlg(s).type === 'choice' ? ' choice' : ''))
+          + (isStop ? ' stop' : '')
           + (s && s.id === App.cur.scriptId ? ' active' : '');
         const lbl = `${esc(tag)}${esc(s ? ' ' + s.id : '')}`;
         return `<div class="${cls}" data-script="${esc(b.n.id)}" style="left:${b.x}px;top:${b.y}px;">
           ${isEnd ? '' : `<div class="fb-tag">${esc(tag)}</div>`}
+          ${isStop ? '<div class="fb-stop">终点</div>' : ''}
           <div class="fb-id">${isEnd ? '🎯 ' + esc(id) : esc(id)}</div>
           ${txt ? `<div class="fb-txt">${esc(txt)}</div>` : ''}
         </div>`;
