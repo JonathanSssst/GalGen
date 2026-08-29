@@ -191,11 +191,17 @@ GalGen 采用项目式开发模式：所有项目信息通过特定编码格式�
   "name": "示例项目",
   "author": "作者",
   "version": "1.0.0",
+  "version_major": 1,
+  "version_minor": 0,
+  "version_patch": 0,
+  "auto_patch_on_save": true,
+  "auto_minor_on_build": true,
   "description": "项目简介",
   "defaults": {
     "text_speed": 30,
     "auto_advance_delay": 3.0,
-    "font": "微软雅黑",
+    "font_cn": "微软雅黑",
+    "font_en": "Microsoft YaHei",
     "font_size": 24,
     "window_width": 1280,
     "window_height": 720
@@ -207,9 +213,14 @@ GalGen 采用项目式开发模式：所有项目信息通过特定编码格式�
 | --- | --- | --- |
 | `name` | string | 项目名称 |
 | `author` | string | 作者 |
-| `version` | string | 项目版本号（SemVer） |
+| `version` | string | 项目版本号（SemVer，由三段合成） |
+| `version_major` / `version_minor` / `version_patch` | int | 版本号三段（总/大/小版本），设置页分栏编辑 |
+| `auto_patch_on_save` | boolean | 保存时自动递增小版本（默认 true） |
+| `auto_minor_on_build` | boolean | 生成 exe 时自动递增大版本、清零小版本（默认 true） |
 | `description` | string | 项目简介 |
 | `defaults` | object | 游戏端默认配置，可在管理器「设置」模块修改 |
+
+> 兼容性：旧文件仅含 `version` 字符串时，加载自动解析到三段；`defaults.font` 自动迁移为 `font_cn`/`font_en`。
 
 #### 4.1.2 characters（角色）
 
@@ -229,12 +240,12 @@ GalGen 采用项目式开发模式：所有项目信息通过特定编码格式�
     "birthday": "2026-01-01"
   },
   "default_standee": "asset_0001",
-  "expressions": {
-    "normal": "asset_0001",
-    "happy": "asset_0002",
-    "angry": "asset_0003"
-  },
-  "voice": "voice_char_0001"
+  "standees": [
+    { "name": "normal", "asset_id": "asset_0001" },
+    { "name": "happy", "asset_id": "asset_0002" }
+  ],
+  "voice": "voice_char_0001",
+  "labels": ["孩子", "康斯坦丁"]
 }
 ```
 
@@ -247,8 +258,11 @@ GalGen 采用项目式开发模式：所有项目信息通过特定编码格式�
 | `variables` | object | 可变变量（如好感度），键值对 |
 | `constants` | object | 不可变常量（年龄、生日等） |
 | `default_standee` | string | 默认立绘资产 ID |
-| `expressions` | object | 表情与立绘的映射，键为表情名，值为资产 ID |
+| `standees` | array | 立绘列表，每项 `{name, asset_id}`（列表式管理，取代旧 expressions） |
 | `voice` | string | 默认语音资产 ID（可为空） |
+| `labels` | array | 显示名列表，剧情中作为说话者显示名下拉选项 |
+
+> 兼容性：旧文件含 `expressions` 时，加载自动迁移为 `standees` 并取 normal 为默认立绘。
 
 #### 4.1.3 scenes（场景）
 
@@ -314,8 +328,8 @@ GalGen 采用项目式开发模式：所有项目信息通过特定编码格式�
       "id": "dlg_0001",
       "type": "text",
       "character_id": "char_0001",
+      "speaker_label": "",
       "standee": "asset_0002",
-      "expression": "happy",
       "voice": "voice_0001",
       "scene_id": "scene_0001",
       "bgm": "bgm_0001",
@@ -358,9 +372,9 @@ GalGen 采用项目式开发模式：所有项目信息通过特定编码格式�
 | --- | --- | --- |
 | `id` | string | 对话 ID，全局唯一 |
 | `type` | enum | `text` 文本 / `choice` 选项 |
-| `character_id` | string | 发言角色 ID（`text` 类型必填） |
-| `standee` | string | 立绘资产 ID |
-| `expression` | string | 表情名，对应角色的 `expressions` 键 |
+| `character_id` | string | 发言角色 ID（`text` 类型必填；为空表示旁白） |
+| `speaker_label` | string | 说话者显示名覆盖（可选）；为空用角色名，有值则覆盖显示，用于化名揭示等场景 |
+| `standee` | string | 立绘资产 ID（有角色时限定为该角色立绘；旁白可用全部） |
 | `voice` | string | 对话语音资产 ID |
 | `scene_id` | string | 场景 ID |
 | `bgm` | string | 背景音乐资产 ID |

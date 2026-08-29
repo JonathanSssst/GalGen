@@ -13,9 +13,12 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from ..builder import build as build_mod
+from ..core import ai as ai_core
 from ..core import assets as assets_core
 from ..core import config as config_core
 from ..core import export as export_core
+from ..core import fonts as fonts_core
+from ..core import references as refs_core
 from ..core.gg_format import FORMAT_VERSION, GalGenProject, from_dict, now_iso
 from ..core.models import Asset, Character, Chapter, Dialog, Effect, Ending, Option, ProjectInfo, Scene, Script
 from ..core.validator import ProjectValidator
@@ -45,6 +48,7 @@ class Api:
         self.project: Optional[GalGenProject] = None
         self.dirty = False
         self._build: Optional[dict] = None
+        self._ai: Optional[dict] = None
 
     # ------------------------------------------------------------------ 对话框
 
@@ -95,6 +99,7 @@ class Api:
             return False
         if not self.project.file_path:
             return self.save_project_as()
+        self._bump_patch()
         self.project.save()
         self.dirty = False
         return True
@@ -106,10 +111,26 @@ class Api:
         path = self._ask("save", save_filename=f"{name}.gg", file_types=DEFAULT_FILE_TYPES)
         if not path:
             return False
+        self._bump_patch()
         self.project.save(path)
         config_core.set_last_project(path)
         self.dirty = False
         return True
+
+    def _bump_patch(self) -> None:
+        """按设置自动递增小版本（保存时）。"""
+        p = self.project.project
+        if getattr(p, "auto_patch_on_save", True):
+            p.version_patch = (p.version_patch or 0) + 1
+            p.sync_version()
+
+    def _bump_minor(self) -> None:
+        """按设置自动递增大版本并清零小版本（生成 exe 时）。"""
+        p = self.project.project
+        if getattr(p, "auto_minor_on_build", True):
+            p.version_minor = (p.version_minor or 0) + 1
+            p.version_patch = 0
+            p.sync_version()
 
     def get_last_project(self) -> str:
         return config_core.get_last_project()
@@ -195,23 +216,43 @@ class Api:
         return True
 
     def asset_preview(self, asset_id: str) -> Optional[dict]:
-        """返回图片资产的 base64 数据（mime + data url），供前端预览。"""
+        """返回资产预览数据：图片 base64；音频/视频返回本地 file:// URL。"""
         if not self.project:
             return None
         asset = self.project.find_by_id("assets", asset_id)
-        if not asset or asset.type != "image":
+        if not asset:
             return None
         path = self.project.asset_path(asset)
         if not path.exists():
             return None
-        mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}.get(
-            path.suffix.lower().lstrip("."), "image/png"
-        )
-        try:
-            data = base64.b64encode(path.read_bytes()).decode("ascii")
-        except OSError:
-            return None
-        return {"mime": mime, "data": data}
+
+        if asset.type == "image":
+            mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"}.get(
+                path.suffix.lower().lstrip("."), "image/png"
+            )
+            try:
+                data = base64.b64encode(path.read_bytes()).decode("ascii")
+            except OSError:
+                return None
+            return {"type": "image", "mime": mime, "data": data}
+
+        if asset.type == "audio":
+            return {"type": "audio", "url": path.as_uri()}
+        if asset.type == "video":
+            return {"type": "video", "url": path.as_uri()}
+        return None
+
+    def asset_references(self) -> dict:
+        """返回资产引用分析 {资产ID: {count, locations}}。"""
+        if not self.project:
+            return {}
+        return refs_core.reference_summary(self.project)
+
+    def list_fonts(self) -> dict:
+        """返回系统字体列表（中文前置），供设置页字体下拉框。"""
+        if not self.project:
+            return {}
+        return fonts_core.list_fonts()
 
     # ------------------------------------------------------------------ 校验 / 导出
 
@@ -238,6 +279,81 @@ class Api:
             return False
         return True
 
+    # ------------------------------------------------------------------ AI 语音生成
+
+    def ai_list_voices(self, force: bool = False) -> list:
+        """返回可用声线列表 [{id, name}, ...]。"""
+        return ai_core.list_voices(force=bool(force))
+
+    def ai_load_voice_map(self) -> dict:
+        if not self.project:
+            return {}
+        return ai_core.load_voice_map(self.project)
+
+    def ai_save_voice_map(self, voice_map: dict) -> bool:
+        if not self.project:
+            return False
+        return ai_core.save_voice_map(self.project, voice_map)
+
+    def ai_voice_generate(self, overwrite: bool = False, script_id: str = "") -> dict:
+        """在后台线程批量生成对话语音，立即返回。"""
+        if not self.project:
+            return {"error": "尚未创建项目"}
+        if not self.project.file_path:
+            if not self.save_project_as():
+                return {"error": "需要先保存项目"}
+        if self._ai and self._ai.get("running"):
+            return {"error": "语音生成进行中，请稍候"}
+
+        voice_map = ai_core.load_voice_map(self.project)
+        state = {"running": True, "done": False, "ok": None, "errors": [], "logs": [], "progress": 0.0}
+        self._ai = state
+
+        def log(msg: Optional[str], progress: Optional[float] = None) -> None:
+            if msg:
+                state["logs"].append(msg)
+                if len(state["logs"]) > 300:
+                    state["logs"] = state["logs"][-300:]
+            if progress is not None:
+                state["progress"] = min(1.0, max(0.0, progress))
+
+        def run() -> None:
+            try:
+                result = ai_core.generate_voices(
+                    self.project, voice_map, log=log, overwrite=bool(overwrite), script_id=script_id
+                )
+                state.update(result)
+                state["ok"] = bool(result.get("ok"))
+                if not result.get("ok"):
+                    state["errors"] = result.get("errors", [])
+                else:
+                    self.dirty = True
+            except Exception as exc:  # noqa: BLE001
+                state["ok"] = False
+                state["errors"] = [str(exc)]
+            finally:
+                state["running"] = False
+                state["done"] = True
+
+        threading.Thread(target=run, daemon=True).start()
+        return {"started": True}
+
+    def ai_voice_status(self) -> dict:
+        if not self._ai:
+            return {"running": False, "done": False, "ok": None, "errors": [], "logs": [], "last": "", "progress": 0.0}
+        a = self._ai
+        return {
+            "running": bool(a["running"]),
+            "done": bool(a["done"]),
+            "ok": a["ok"],
+            "errors": list(a.get("errors", [])),
+            "logs": list(a.get("logs", [])),
+            "last": a["logs"][-1] if a.get("logs") else "",
+            "progress": a.get("progress", 0.0),
+            "generated": a.get("generated", 0),
+            "skipped": a.get("skipped", 0),
+        }
+
     # ------------------------------------------------------------------ 一键生成 .exe
 
     def build_start(self, onefile: bool = True) -> dict:
@@ -249,6 +365,10 @@ class Api:
                 return {"error": "需要先保存项目"}
         if self._build and self._build.get("running"):
             return {"error": "构建进行中，请稍候"}
+
+        self._bump_minor()
+        self.project.save()
+        self.dirty = False
 
         state = {"running": True, "done": False, "ok": None, "exe": "", "errors": [], "logs": [], "progress": 0.0}
         self._build = state

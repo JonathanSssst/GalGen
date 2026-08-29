@@ -9,6 +9,8 @@ const App = {
   cur: { scriptId: '', dialogId: '', characterId: '', sceneId: '', chapterId: '', assetId: '', endingId: '' },
   Pages: {},
   els: {},
+  aiVoices: null,
+  _lastWinTitle: '',
 };
 
 /* ------------------------- 工具函数 ------------------------- */
@@ -58,6 +60,24 @@ function filterByCategory(items, category) {
   return (items || []).filter((a) => !category || a.category === category);
 }
 
+/* 通用列表点击选中。selectFn(el, id) 设置选中项并渲染。 */
+function listSelect(el, key, afterSelect) {
+  el.addEventListener('click', (e) => {
+    const it = e.target.closest('.list-item');
+    if (!it) return;
+    App.cur[key] = it.dataset.id;
+    afterSelect && afterSelect(it.dataset.id);
+  });
+}
+
+/* 删除后自动选中下一个（列表末尾则选前一个）。返回新选中 id 或 ''。 */
+function nextAfterDelete(arr, curId) {
+  if (!arr.length) return '';
+  const idx = arr.findIndex((x) => x.id === curId);
+  const next = Math.min(Math.max(idx, 0), arr.length - 1);
+  return arr[next].id;
+}
+
 /* ------------------------- 项目状态 ------------------------- */
 
 function applyPayload(payload) {
@@ -69,18 +89,88 @@ function applyPayload(payload) {
   App.meta = payload.meta;
   App.filePath = payload.file_path || '';
   App.dirty = !!payload.dirty;
+  resetAssetRefs();
   updateHeader();
   renderPage();
 }
 
 function commit() {
   if (!App.data) return;
+  pushUndo();
   App.dirty = true;
-  call('set_data', App.data);
   updateHeader();
+  scheduleSync();
+}
+
+/* ------------------------- 撤销 / 重做（数据快照） ------------------------- */
+
+const UNDO_LIMIT = 50;
+let _undoStack = [];
+let _redoStack = [];
+
+function pushUndo() {
+  if (!App.data) return;
+  const snap = JSON.stringify(App.data);
+  if (_undoStack.length && _undoStack[_undoStack.length - 1] === snap) return;
+  _undoStack.push(snap);
+  if (_undoStack.length > UNDO_LIMIT) _undoStack.shift();
+  _redoStack = [];
+}
+
+function undo() {
+  if (!App.data) return;
+  const cur = JSON.stringify(App.data);
+  if (_undoStack.length) {
+    _redoStack.push(cur);
+    if (_redoStack.length > UNDO_LIMIT) _redoStack.shift();
+    App.data = JSON.parse(_undoStack.pop());
+    resetAssetRefs();
+    App.dirty = true;
+    updateHeader();
+    scheduleSync();
+    renderPage();
+    toast('已撤销');
+  }
+}
+
+function redo() {
+  if (!App.data) return;
+  const cur = JSON.stringify(App.data);
+  if (_redoStack.length) {
+    _undoStack.push(cur);
+    App.data = JSON.parse(_redoStack.pop());
+    resetAssetRefs();
+    App.dirty = true;
+    updateHeader();
+    scheduleSync();
+    renderPage();
+    toast('已重做');
+  }
+}
+
+let _syncTimer = null;
+let _syncPending = false;
+
+function scheduleSync() {
+  if (_syncPending) return;
+  _syncPending = true;
+  _syncTimer = setTimeout(async () => {
+    _syncTimer = null;
+    _syncPending = false;
+    try { await call('set_data', App.data); } catch (e) { /* 忽略 */ }
+  }, 400);
+}
+
+function flushCommit() {
+  if (!_syncPending) return Promise.resolve();
+  clearTimeout(_syncTimer);
+  _syncTimer = null;
+  _syncPending = false;
+  return call('set_data', App.data).catch(() => {});
 }
 
 async function saveProject() {
+  await flushCommit();
   const ok = await call('save_project');
   if (ok) {
     App.dirty = false;
@@ -107,6 +197,7 @@ async function openProject() {
 }
 
 async function saveProjectAs() {
+  await flushCommit();
   const ok = await call('save_project_as');
   if (ok) {
     App.dirty = false;
@@ -131,7 +222,11 @@ function updateHeader() {
     `${esc(title)}${App.filePath ? `<span class="path">${esc(App.filePath)}</span>` : ''}` +
     (App.dirty ? ' <span style="color:#e67e22">●</span>' : '');
   document.title = `${title} - GalGen 管理器`;
-  call('set_window_title', `${title}${App.dirty ? ' ●' : ''} - GalGen 管理器`);
+  const winTitle = `${title}${App.dirty ? ' ●' : ''} - GalGen 管理器`;
+  if (winTitle !== App._lastWinTitle) {
+    App._lastWinTitle = winTitle;
+    call('set_window_title', winTitle);
+  }
 }
 
 function updateStatus(msg) {
@@ -146,6 +241,7 @@ function renderPage() {
   if (!page) { host.innerHTML = '<div class="empty">页面不存在</div>'; return; }
   page.render(host, App);
   page.after?.(host, App);
+  bindSplitters(host);
 }
 
 function switchPage(name) {
@@ -154,6 +250,39 @@ function switchPage(name) {
     el.classList.toggle('active', el.dataset.page === name);
   });
   renderPage();
+}
+
+/* ------------------------- 功能区宽度拖拽调整 ------------------------- */
+
+function bindSplitters(root) {
+  if (!root) return;
+  root.querySelectorAll('.vsplit-handle').forEach((handle) => {
+    if (handle.dataset.bound) return;
+    handle.dataset.bound = '1';
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const hsplit = handle.parentElement;
+      const side = hsplit.querySelector('.side');
+      if (!side) return;
+      const startX = e.clientX;
+      const startW = side.getBoundingClientRect().width;
+      const move = (ev) => {
+        const w = Math.max(140, Math.min(700, startW + (ev.clientX - startX)));
+        side.style.width = w + 'px';
+        side.style.minWidth = w + 'px';
+      };
+      const up = () => {
+        document.removeEventListener('mousemove', move);
+        document.removeEventListener('mouseup', up);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      };
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+  });
 }
 
 /* ------------------------- 初始化 ------------------------- */
@@ -186,6 +315,7 @@ function bindGlobal() {
   document.getElementById('btn-open').addEventListener('click', openProject);
   document.getElementById('btn-save-as').addEventListener('click', saveProjectAs);
   document.getElementById('btn-validate').addEventListener('click', async () => {
+    await flushCommit();
     const issues = await call('validate');
     switchPage('build');
     App.Pages.build.renderValidation(issues);
@@ -196,10 +326,21 @@ function bindGlobal() {
   });
   window.addEventListener('keydown', (e) => {
     const mod = e.ctrlKey || e.metaKey;
-    if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); saveProject(); }
-    else if (mod && e.key.toLowerCase() === 'n') { e.preventDefault(); newProject(); }
-    else if (mod && e.key.toLowerCase() === 'o') { e.preventDefault(); openProject(); }
+    const k = e.key.toLowerCase();
+    if (mod && k === 's') { e.preventDefault(); saveProject(); }
+    else if (mod && k === 'n') { e.preventDefault(); newProject(); }
+    else if (mod && k === 'o') { e.preventDefault(); openProject(); }
+    else if (mod && k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+    else if (mod && k === 'z' && e.shiftKey) { e.preventDefault(); redo(); }
+    else if (mod && k === 'y') { e.preventDefault(); redo(); }
+    else if (mod && k === 'f') { e.preventDefault(); focusSearch(); }
   });
+}
+
+function focusSearch() {
+  const inp = document.querySelector('input[kv-editor-search], #asset-cat');
+  if (inp) { inp.focus(); inp.select(); }
+  else toast('当前页面无可搜索输入框');
 }
 
 async function initApp() {

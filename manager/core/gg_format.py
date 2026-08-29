@@ -19,6 +19,7 @@ from .models import (
     Branch,
     Chapter,
     Character,
+    CharacterStandee,
     Dialog,
     Effect,
     Ending,
@@ -43,19 +44,33 @@ def now_iso() -> str:
 
 
 def from_dict(cls: Type[T], data) -> T:
-    """将 dict 递归转换为 dataclass 实例（含嵌套 dataclass / 列表 / 字典）。"""
+    """将 dict 递归转换为 dataclass 实例（含嵌套 dataclass / 列表 / 字典）。
+
+    get_type_hints 结果按类缓存，避免为每个实例重复求值注解（显著提速）。
+    """
     if data is None:
         return cls()
     if isinstance(data, cls):
         return data
     if dataclasses.is_dataclass(cls):
-        hints = get_type_hints(cls)
+        hints = _type_hints_cached(cls)
         kwargs = {}
         for name in cls.__dataclass_fields__:
             if name in data:
                 kwargs[name] = _convert(data[name], hints.get(name))
         return cls(**kwargs)
     return data
+
+
+_TYPE_HINTS_CACHE: dict = {}
+
+
+def _type_hints_cached(cls) -> dict:
+    hints = _TYPE_HINTS_CACHE.get(cls)
+    if hints is None:
+        hints = get_type_hints(cls)
+        _TYPE_HINTS_CACHE[cls] = hints
+    return hints
 
 
 def _convert(val, hint):
@@ -75,6 +90,52 @@ def _convert(val, hint):
     if dataclasses.is_dataclass(hint):
         return from_dict(hint, val)
     return val
+
+
+def _parse_version(value) -> tuple:
+    """将版本字符串解析为 (major, minor, patch)；解析失败返回 (1, 0, 0)。"""
+    m = re.match(r"^\s*(\d+)(?:[.\-_](\d+))?(?:[.\-_](\d+))?", str(value or ""))
+    if not m:
+        return (1, 0, 0)
+    major = int(m.group(1) or 1)
+    minor = int(m.group(2) or 0)
+    patch = int(m.group(3) or 0)
+    return (major, minor, patch)
+
+
+def _project_from_dict(raw: dict) -> ProjectInfo:
+    """项目设置构造，兼容旧格式：
+    - version 字符串缺省结构字段时解析填充 major/minor/patch；
+    - defaults.font 旧字段迁移为 font_cn / font_en。
+    """
+    raw = raw or {}
+    project = from_dict(ProjectInfo, raw)
+    if raw.get("version") and not raw.get("version_major") and "version_major" not in raw:
+        major, minor, patch = _parse_version(raw.get("version"))
+        project.version_major = major
+        project.version_minor = minor
+        project.version_patch = patch
+    defaults = raw.get("defaults", {}) or {}
+    if "font" in defaults and "font_cn" not in defaults:
+        project.defaults.font_cn = defaults.get("font", "微软雅黑") or "微软雅黑"
+        project.defaults.font_en = "Microsoft YaHei"
+    return project
+
+
+def _character_from_dict(raw: dict) -> Character:
+    """角色构造，兼容旧格式：旧 expressions 映射迁移为 standees 列表。"""
+    raw = raw or {}
+    char = from_dict(Character, raw)
+    expressions = raw.get("expressions") or {}
+    if expressions and not raw.get("standees"):
+        standees = []
+        for name, asset_id in expressions.items():
+            if isinstance(asset_id, str) and asset_id:
+                standees.append(CharacterStandee(name=name, asset_id=asset_id))
+        char.standees = standees
+        if not char.default_standee:
+            char.default_standee = expressions.get("normal") or next(iter(expressions.values()), "")
+    return char
 
 
 @dataclasses.dataclass
@@ -116,6 +177,8 @@ class GalGenProject:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
+        # 版本同步：以结构化字段为准刷新 version 字符串
+        self.project.sync_version()
         data = {
             "project": dataclasses.asdict(self.project),
             "characters": [dataclasses.asdict(c) for c in self.characters],
@@ -131,14 +194,16 @@ class GalGenProject:
     def from_dict(cls, raw: dict) -> "GalGenProject":
         meta = raw.get("meta", {}) or {}
         data = raw.get("data", {}) or {}
+        project_raw = data.get("project", {}) or {}
+        project = _project_from_dict(project_raw)
         return cls(
             format_version=meta.get("format_version", FORMAT_VERSION),
             generator=meta.get("generator", GENERATOR),
             generator_version=meta.get("generator_version", "1.0.0"),
             created_at=meta.get("created_at", ""),
             updated_at=meta.get("updated_at", ""),
-            project=from_dict(ProjectInfo, data.get("project", {})),
-            characters=[from_dict(Character, c) for c in data.get("characters", [])],
+            project=project,
+            characters=[_character_from_dict(c) for c in data.get("characters", [])],
             scenes=[from_dict(Scene, s) for s in data.get("scenes", [])],
             chapters=[from_dict(Chapter, c) for c in data.get("chapters", [])],
             scripts=[from_dict(Script, s) for s in data.get("scripts", [])],

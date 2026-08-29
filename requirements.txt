@@ -3,3 +3,6 @@ pywebview>=6.0.0
 
 # 打包工具（阶段 4 起使用）
 pyinstaller>=6.0.0
+
+# AI 语音生成（edge-tts：微软 Edge 在线 TTS，免费、无需 API Key）
+edge-tts>=6.1.0

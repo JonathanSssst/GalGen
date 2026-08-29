@@ -45,9 +45,7 @@ function charById(id) {
 
 function resolveStandee(d, char) {
   let id = d.standee;
-  if (!id && char) {
-    id = (char.expressions || {})[d.expression] || char.default_standee;
-  }
+  if (!id && char) id = char.default_standee;
   return id ? src(id) : '';
 }
 
@@ -58,6 +56,15 @@ function keyOf(d) {
 /* ------------------------- 配置与进度持久化 ------------------------- */
 
 function loadCfg() {
+  const def = (G.data && G.data.project && G.data.project.defaults) || {};
+  const defaults = {
+    speed: def.text_speed ?? 30,
+    autoDelay: def.auto_advance_delay ?? 3,
+    font: def.font_cn || def.font || '微软雅黑',
+    fontEn: def.font_en || '',
+    fontSize: def.font_size ?? 22,
+  };
+  Object.assign(G.cfg, defaults);
   try { Object.assign(G.cfg, JSON.parse(localStorage.getItem('galgen_cfg') || '{}')); } catch (e) { /* 忽略 */ }
 }
 
@@ -163,7 +170,9 @@ function findStartScript() {
 }
 
 function applyFont() {
-  document.body.style.fontFamily = `"${G.cfg.font}", "Microsoft YaHei UI", sans-serif`;
+  const cn = G.cfg.font || '微软雅黑';
+  const en = G.cfg.fontEn || 'Microsoft YaHei';
+  document.body.style.fontFamily = `"${cn}", "${en}", "Microsoft YaHei UI", sans-serif`;
   $('dialog-text').style.fontSize = `${G.cfg.fontSize}px`;
 }
 
@@ -526,7 +535,8 @@ function showRecallScript(scriptId) {
   const rows = (s.dialogs || []).map((d) => {
     const read = G.readSet.has(`${s.id}:${d.id}`);
     const char = charById(d.character_id);
-    const head = `${d.type === 'choice' ? '【选项】' : '【文本】'} ${esc(char ? char.name : '旁白')}`;
+    const speaker = d.speaker_label || (char ? char.name : '旁白');
+    const head = `${d.type === 'choice' ? '【选项】' : '【文本】'} ${esc(speaker)}`;
     return `<li class="recall-dialog${read ? '' : ' unread'}"><span class="recall-head">${head}</span><span class="recall-body">${esc(d.content || '')}</span></li>`;
   }).join('');
   showOverlay(`
@@ -620,10 +630,11 @@ function showDialog(i) {
   $('bg').src = scene ? src(scene.background) : '';
 
   const char = charById(d.character_id);
+  const speaker = d.speaker_label || (char ? char.name : '旁白');
   const standeeUrl = resolveStandee(d, char);
   const st = $('standee');
   if (standeeUrl) { st.src = standeeUrl; st.style.display = 'block'; } else { st.style.display = 'none'; }
-  $('name-label').textContent = char ? char.name : '旁白';
+  $('name-label').textContent = speaker;
 
   setBgm(d.bgm);
   playVoice(d.voice);

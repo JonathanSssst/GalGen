@@ -15,7 +15,8 @@ class ProjectDefaults:
 
     text_speed: int = 30
     auto_advance_delay: float = 3.0
-    font: str = "微软雅黑"
+    font_cn: str = "微软雅黑"
+    font_en: str = "Microsoft YaHei"
     font_size: int = 24
     window_width: int = 1280
     window_height: int = 720
@@ -23,18 +24,46 @@ class ProjectDefaults:
 
 @dataclass
 class ProjectInfo:
-    """项目设置，对应 .gg 中 data.project。"""
+    """项目设置，对应 .gg 中 data.project。
+
+    version 字段：字符串形式（如 1.0.2）；同时以 version_major/minor/patch
+    结构化存储，便于设置页分栏编辑。auto_patch_on_save / auto_minor_on_build
+    控制版本自动递增开关。
+    """
 
     name: str = "未命名项目"
     author: str = ""
     version: str = "1.0.0"
+    version_major: int = 1
+    version_minor: int = 0
+    version_patch: int = 0
     description: str = ""
+    auto_patch_on_save: bool = True
+    auto_minor_on_build: bool = True
     defaults: ProjectDefaults = field(default_factory=ProjectDefaults)
+
+    def sync_version(self) -> None:
+        """将 version 字符串与 major/minor/patch 同步（以结构化字段为准）。"""
+        self.version = f"{self.version_major}.{self.version_minor}.{self.version_patch}"
+
+
+@dataclass
+class CharacterStandee:
+    """角色立绘项：名称（如 normal/happy）+ 引用资产 ID。"""
+
+    name: str = ""
+    asset_id: str = ""
 
 
 @dataclass
 class Character:
-    """角色，对应 .gg 中 data.characters 数组元素。"""
+    """角色，对应 .gg 中 data.characters 数组元素。
+
+    labels：显示名列表（如「孩子」「康斯坦丁」），用于剧情中作为 speaker_label
+    下拉选项，覆盖角色默认名显示。
+    standees：立绘列表（列表式管理，取代旧的 expressions 表情映射）。
+    default_standee：默认立绘资产 ID（保持兼容）。
+    """
 
     id: str = ""
     name: str = ""
@@ -43,8 +72,9 @@ class Character:
     variables: dict = field(default_factory=dict)
     constants: dict = field(default_factory=dict)
     default_standee: str = ""
-    expressions: dict = field(default_factory=dict)
+    standees: List[CharacterStandee] = field(default_factory=list)
     voice: str = ""
+    labels: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -103,11 +133,16 @@ class Option:
 
 @dataclass
 class Dialog:
-    """一条对话，text 或 choice 类型。"""
+    """一条对话，text 或 choice 类型。
+
+    speaker_label：说话者显示名覆盖。为空时用角色名；有值时覆盖显示
+    （用于化名揭示等场景，角色名保持不变）。
+    """
 
     id: str = ""
     type: str = "text"  # text / choice
     character_id: str = ""
+    speaker_label: str = ""
     standee: str = ""
     expression: str = ""
     voice: str = ""

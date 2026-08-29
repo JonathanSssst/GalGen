@@ -177,6 +177,9 @@ class ProjectValidator:
                 self._error(loc, f"默认立绘引用不存在：{c.default_standee}")
             if c.voice and not self.project.find_by_id("assets", c.voice):
                 self._error(loc, f"默认语音引用不存在：{c.voice}")
+            for st in c.standees:
+                if st.asset_id and not self.project.find_by_id("assets", st.asset_id):
+                    self._error(loc, f"立绘「{st.name or st.asset_id}」引用不存在：{st.asset_id}")
 
     # ------------------------------------------------------------------ 辅助
 
